@@ -1,0 +1,6 @@
+{
+  "name": "Aura AI Gallery",
+  "description": "An AI-powered smart gallery with automatic face grouping, photo version control, duplication prevention, storage optimizer, and multi-device backup sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
