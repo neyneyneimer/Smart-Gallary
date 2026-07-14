@@ -20,7 +20,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "aura_gallery_database"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_1_2)  // define proper migrations()
                 .build()
                 INSTANCE = instance
                 instance
