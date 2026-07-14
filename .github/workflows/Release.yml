@@ -1,0 +1,57 @@
+name: Android APK Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers the workflow automatically when you push a tag like "v1.0.0"
+  
+  # Allows you to trigger the workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    name: Build APK and Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant Execute Permission to Gradle Wrapper
+        run: chmod +x ./gradlew
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+
+      # If you use standard APK signature schemes (v2/v3), you can add an action here 
+      # to sign the unsigned APK before pushing it to the release, using GitHub Secrets.
+      # Example: uses: r0adkll/sign-android-release@v1
+
+      - name: Get Tag Name (If triggered by tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "VERSION_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Set Default Tag Name (If triggered manually)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: echo "VERSION_TAG=manual-${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: Create GitHub Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ env.VERSION_TAG }}
+          tag_name: ${{ env.VERSION_TAG }}
+          # The path below assumes a standard Android project structure. 
+          # Adjust "app/" if your module has a different name.
+          files: app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
+        env:
+          # This token is provided automatically by GitHub Actions
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
