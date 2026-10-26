@@ -1,5 +1,14 @@
 import React, { useMemo } from "react";
-import { Sparkles, Cpu, User, Image as ImageIcon, ChevronRight, CheckCircle2, Trees } from "lucide-react";
+import {
+  Cpu,
+  User,
+  ChevronRight,
+  CheckCircle2,
+  Trees,
+  Compass,
+  Sparkles,
+  Camera
+} from "lucide-react";
 import { PhotoEntity } from "../types";
 
 interface AIAlbumsProps {
@@ -17,7 +26,6 @@ export function AIAlbums({
   onStartScan,
   onAlbumClick
 }: AIAlbumsProps) {
-  // Check count of unscanned files
   const unscannedCount = useMemo(() => {
     return photos.filter((p) => p.faceTag === null).length;
   }, [photos]);
@@ -27,7 +35,7 @@ export function AIAlbums({
   }, [photos]);
 
   // Group photos by face tags
-  const groups = useMemo(() => {
+  const faceGroups = useMemo(() => {
     const map: { [key: string]: PhotoEntity[] } = {};
     photos.forEach((photo) => {
       if (photo.faceTag) {
@@ -38,145 +46,183 @@ export function AIAlbums({
     return map;
   }, [photos]);
 
-  // Known face tags in our app
+  // Group photos by environment/scene
+  const sceneGroups = useMemo(() => {
+    const map: { [key: string]: PhotoEntity[] } = {};
+    photos.forEach((photo) => {
+      if (photo.environment) {
+        if (!map[photo.environment]) map[photo.environment] = [];
+        map[photo.environment].push(photo);
+      }
+    });
+    return map;
+  }, [photos]);
+
   const facesList = ["Alice", "Bob", "Clara", "No Face"];
 
   return (
-    <div className="flex-1 flex flex-col gap-6">
-      {/* Smart Analysis Hero Section */}
-      <div className="relative overflow-hidden rounded-3xl border border-brand-purple/20 bg-gradient-to-br from-brand-purple/10 via-purple-50/20 to-white p-6 md:p-8">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="max-w-md">
-            <div className="flex items-center gap-2 text-brand-purple mb-3">
-              <Sparkles size={18} className="animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-widest">
-                Aura AI Processing Engine
-              </span>
-            </div>
-            <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 md:text-3xl font-display">
-              Face Grouping & Semantic Search
-            </h2>
-            <p className="text-sm text-gray-600 mt-2 leading-relaxed">
-              Scan your media to let the **Gemini** neural core automatically categorize faces, detect attire, environments, and ambient light.
-            </p>
-
-            <div className="flex gap-4 mt-4 text-xs font-mono text-gray-500">
-              <span>Scanned: <strong>{scannedCount}</strong></span>
-              <span>Unscanned: <strong>{unscannedCount}</strong></span>
-            </div>
+    <div className="flex-1 flex flex-col gap-8">
+      {/* AI Processing Panel */}
+      <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="max-w-lg">
+          <div className="flex items-center gap-2 text-stone-500 text-xs font-mono mb-2">
+            <Cpu size={14} className="text-stone-700" />
+            <span>Neural Face Grouping & Scene Detection</span>
           </div>
+          <h2 className="text-xl font-bold text-stone-900 tracking-tight">
+            Smart Recognition Engine
+          </h2>
+          <p className="text-xs text-stone-500 mt-1 leading-relaxed">
+            Neural network clusters photos by facial embeddings and environment signatures without duplicate files.
+          </p>
 
-          <div className="shrink-0 min-w-[200px]">
-            {isScanning ? (
-              <div className="flex flex-col gap-2 bg-white/80 p-4 rounded-2xl border border-gray-200">
-                <div className="flex justify-between items-center text-xs font-semibold text-gray-700">
-                  <span className="flex items-center gap-1.5 animate-pulse">
-                    <Cpu size={14} className="text-brand-purple" />
-                    Analysing media...
-                  </span>
-                  <span>{Math.round(scanProgress * 100)}%</span>
-                </div>
-                <div className="w-full h-2 bg-gray-150 rounded-full overflow-hidden mt-1">
-                  <div
-                    className="h-full bg-brand-purple transition-all duration-300"
-                    style={{ width: `${scanProgress * 100}%` }}
-                  />
-                </div>
-              </div>
-            ) : unscannedCount > 0 ? (
-              <button
-                onClick={onStartScan}
-                className="w-full flex items-center justify-center gap-2 bg-brand-purple hover:bg-brand-purple/95 text-white font-semibold px-6 py-3 rounded-2xl shadow-lg shadow-brand-purple/25 hover:shadow-brand-purple/35 transition hover:scale-[1.02] active:scale-95 cursor-pointer"
-              >
-                <Cpu size={18} />
-                Scan {unscannedCount} Media Files
-              </button>
-            ) : (
-              <div className="flex items-center gap-2.5 bg-green-50 text-green-700 border border-green-200 px-5 py-3 rounded-2xl">
-                <CheckCircle2 size={20} className="shrink-0" />
-                <span className="text-xs font-bold">All media categorized!</span>
-              </div>
-            )}
+          <div className="flex items-center gap-3 text-xs font-mono text-stone-600 mt-3">
+            <span>Indexed: <strong>{scannedCount}</strong></span>
+            <span>·</span>
+            <span>Pending: <strong>{unscannedCount}</strong></span>
           </div>
         </div>
 
-        {/* Backdrop Ambient Circle */}
-        <div className="absolute -right-16 -bottom-16 w-48 h-48 rounded-full bg-brand-purple/5 filter blur-2xl" />
+        <div className="shrink-0 min-w-[220px]">
+          {isScanning ? (
+            <div className="flex flex-col gap-2 bg-stone-50 p-4 rounded-xl border border-stone-200">
+              <div className="flex justify-between items-center text-xs font-mono text-stone-700">
+                <span className="flex items-center gap-1.5 animate-pulse">
+                  <Cpu size={13} className="text-stone-900" />
+                  Analyzing Media...
+                </span>
+                <span>{Math.round(scanProgress * 100)}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-stone-900 transition-all duration-300"
+                  style={{ width: `${scanProgress * 100}%` }}
+                />
+              </div>
+            </div>
+          ) : unscannedCount > 0 ? (
+            <button
+              onClick={onStartScan}
+              className="w-full flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold px-5 py-3 rounded-xl transition cursor-pointer shadow-xs"
+            >
+              <Cpu size={15} />
+              <span>Scan {unscannedCount} Pending Files</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-4 py-3 rounded-xl text-xs font-medium">
+              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+              <span>All library media categorized</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Grid of Albums */}
+      {/* People / Faces Section */}
       <div className="flex flex-col gap-3">
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider pl-1">
-          Smart Categories
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-stone-500 uppercase tracking-wider pl-1">
+            People & Individuals
+          </h3>
+          <span className="text-[11px] font-mono text-stone-400">
+            {Object.keys(faceGroups).length} identified clusters
+          </span>
+        </div>
 
         {scannedCount === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 bg-white border border-gray-150 rounded-2xl text-center">
-            <Cpu size={36} className="text-gray-300 mb-2" />
-            <span className="text-sm font-bold text-gray-700">No categorised albums yet</span>
-            <p className="text-xs text-gray-500 max-w-xs mt-1">
-              Click the scan button above to analyze your photos and build semantic face structures.
+          <div className="flex flex-col items-center justify-center p-12 bg-white border border-stone-200 rounded-2xl text-center shadow-xs">
+            <User size={32} className="text-stone-300 mb-2" />
+            <span className="text-xs font-semibold text-stone-700">No categorized face albums yet</span>
+            <p className="text-[11px] text-stone-500 max-w-xs mt-1">
+              Start analysis above to generate semantic albums for recognized subjects.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {facesList.map((face) => {
-              const albumPhotos = groups[face] || [];
+              const albumPhotos = faceGroups[face] || [];
               if (albumPhotos.length === 0) return null;
 
               const isScenic = face === "No Face";
-              const displayName = isScenic ? "Scenic & Landscapes" : face;
-              const displayIcon = isScenic ? <Trees size={16} /> : <User size={16} />;
+              const displayName = isScenic ? "Scenic Landscapes" : face;
+              const displayIcon = isScenic ? <Trees size={14} /> : <User size={14} />;
 
               const videoCount = albumPhotos.filter((p) => p.durationSeconds > 0).length;
               const photoCount = albumPhotos.length - videoCount;
-
-              const desc = buildCountString(photoCount, videoCount);
 
               return (
                 <div
                   key={face}
                   onClick={() => onAlbumClick(face)}
-                  className="flex items-center justify-between p-4 bg-white border border-gray-150 rounded-2xl cursor-pointer hover:border-brand-purple/40 hover:shadow-sm transition"
+                  className="bg-white border border-stone-200 rounded-2xl overflow-hidden cursor-pointer hover:border-stone-400 hover:shadow-sm transition group flex flex-col"
                 >
-                  <div className="flex items-center gap-4">
-                    {/* Thumbnail */}
-                    <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-100 shrink-0 bg-gray-50">
-                      <img
-                        src={`/images/${albumPhotos[0].resourceName}.jpg`}
-                        alt={displayName}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-900">{displayName}</h4>
-                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1 font-medium">
+                  <div className="relative aspect-4/3 w-full bg-stone-100 overflow-hidden">
+                    <img
+                      src={`/images/${albumPhotos[0].resourceName}.jpg`}
+                      alt={displayName}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-stone-950/70 via-transparent to-transparent flex items-end p-3 text-white">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold">
                         {displayIcon}
-                        <span>{desc}</span>
+                        <span>{displayName}</span>
                       </div>
                     </div>
                   </div>
 
-                  <ChevronRight size={18} className="text-gray-400" />
+                  <div className="p-3 flex items-center justify-between text-xs text-stone-500 font-mono">
+                    <span>
+                      {photoCount} {photoCount === 1 ? "photo" : "photos"}
+                      {videoCount > 0 ? `, ${videoCount} vid` : ""}
+                    </span>
+                    <ChevronRight size={14} className="text-stone-400 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* Semantic Scenes & Environments Section */}
+      {scannedCount > 0 && Object.keys(sceneGroups).length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-stone-500 uppercase tracking-wider pl-1">
+              Detected Environments & Scenes
+            </h3>
+            <span className="text-[11px] font-mono text-stone-400">
+              {Object.keys(sceneGroups).length} scene types
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {Object.entries(sceneGroups).map(([envName, envPhotos]) => (
+              <div
+                key={envName}
+                onClick={() => onAlbumClick(envPhotos[0].faceTag || "No Face")}
+                className="flex items-center gap-3 p-3 bg-white border border-stone-200 rounded-xl hover:bg-stone-50 cursor-pointer transition"
+              >
+                <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-stone-100 border border-stone-200">
+                  <img
+                    src={`/images/${envPhotos[0].resourceName}.jpg`}
+                    alt={envName}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-semibold text-stone-900 truncate">{envName}</h4>
+                  <span className="text-[10px] font-mono text-stone-500 mt-0.5 block">
+                    {envPhotos.length} {envPhotos.length === 1 ? "capture" : "captures"}
+                  </span>
+                </div>
+                <ChevronRight size={14} className="text-stone-400" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
-}
-
-function buildCountString(photosCount: number, videosCount: number) {
-  const parts: string[] = [];
-  if (photosCount > 0) {
-    parts.push(`${photosCount} ${photosCount === 1 ? "photo" : "photos"}`);
-  }
-  if (videosCount > 0) {
-    parts.push(`${videosCount} ${videosCount === 1 ? "video" : "videos"}`);
-  }
-  return parts.join(", ");
 }

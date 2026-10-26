@@ -5,6 +5,13 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 
 // Standard TypeScript definitions for our backend
+interface ImageAdjustments {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  warmth: number;
+}
+
 interface PhotoEntity {
   id: number;
   resourceName: string;
@@ -18,9 +25,17 @@ interface PhotoEntity {
   hasBackupSynced: boolean;
   backupLocation: string | null;
   currentFilter: string | null;
+  adjustments?: ImageAdjustments;
+  isFavorite?: boolean;
   attire: string | null;
   environment: string | null;
   lighting: string | null;
+  cameraModel?: string;
+  lens?: string;
+  focalLength?: string;
+  aperture?: string;
+  iso?: number;
+  dimensions?: { width: number; height: number };
 }
 
 interface PhotoEditVersionEntity {
@@ -28,6 +43,7 @@ interface PhotoEditVersionEntity {
   photoId: number;
   versionNumber: number;
   filterName: string;
+  adjustments?: ImageAdjustments;
   timestamp: number;
   sizeDifferenceBytes: number;
 }
@@ -164,16 +180,62 @@ function prepopulateDatabase() {
     }
   ];
 
-  photos = defaults.map((item, idx) => ({
-    ...item,
-    id: nextPhotoId++,
-    hasBackupSynced: false,
-    backupLocation: null,
-    currentFilter: null,
-    attire: null,
-    environment: null,
-    lighting: null
-  }));
+  photos = defaults.map((item, idx) => {
+    let cameraModel = "Sony Alpha 7 IV";
+    let lens = "FE 50mm f/1.4 GM";
+    let focalLength = "50mm";
+    let aperture = "f/1.8";
+    let iso = 100;
+    let dimensions = { width: 4000, height: 3000 };
+
+    if (item.resourceName.includes("mountain") || item.resourceName.includes("lake")) {
+      cameraModel = "Hasselblad X2D 100C";
+      lens = "XCD 38mm f/2.5 V";
+      focalLength = "38mm";
+      aperture = "f/8.0";
+      iso = 64;
+      dimensions = { width: 5400, height: 3600 };
+    } else if (item.resourceName.includes("clara")) {
+      cameraModel = "Leica Q3";
+      lens = "Summilux 28mm f/1.7 ASPH";
+      focalLength = "28mm";
+      aperture = "f/2.0";
+      iso = 160;
+      dimensions = { width: 4500, height: 3000 };
+    } else if (item.resourceName.includes("bob")) {
+      cameraModel = "Canon EOS R5";
+      lens = "RF 85mm f/1.2 L USM";
+      focalLength = "85mm";
+      aperture = "f/1.4";
+      iso = 200;
+      dimensions = { width: 4200, height: 2800 };
+    }
+
+    if (item.durationSeconds > 0) {
+      cameraModel = "Sony FX3 Cinema Line";
+      lens = "FE 24-70mm f/2.8 GM II";
+      dimensions = { width: 3840, height: 2160 };
+    }
+
+    return {
+      ...item,
+      id: nextPhotoId++,
+      hasBackupSynced: false,
+      backupLocation: null,
+      currentFilter: null,
+      adjustments: { brightness: 0, contrast: 0, saturation: 0, warmth: 0 },
+      isFavorite: idx === 0 || idx === 3,
+      attire: null,
+      environment: null,
+      lighting: null,
+      cameraModel,
+      lens,
+      focalLength,
+      aperture,
+      iso,
+      dimensions
+    };
+  });
 }
 
 prepopulateDatabase();
@@ -301,6 +363,18 @@ async function startServer() {
     res.json(versions);
   });
 
+  // API Endpoint: Toggle favorite
+  app.patch("/api/photos/:id/favorite", (req, res) => {
+    const photoId = parseInt(req.params.id);
+    const photo = photos.find((p) => p.id === photoId);
+    if (!photo) {
+      res.status(404).json({ error: "Photo not found" });
+      return;
+    }
+    photo.isFavorite = !photo.isFavorite;
+    res.json({ success: true, isFavorite: photo.isFavorite, photo });
+  });
+
   // API Endpoint: Apply filter
   app.post("/api/photos/:id/filter", (req, res) => {
     const photoId = parseInt(req.params.id);
@@ -308,7 +382,8 @@ async function startServer() {
 
     const photoIdx = photos.findIndex((p) => p.id === photoId);
     if (photoIdx === -1) {
-      return res.status(404).json({ error: "Photo not found" });
+      res.status(404).json({ error: "Photo not found" });
+      return;
     }
 
     const currentVersions = photoVersions.filter((v) => v.photoId === photoId);
@@ -319,12 +394,44 @@ async function startServer() {
       photoId,
       versionNumber: nextVersionNum,
       filterName,
+      adjustments: photos[photoIdx].adjustments ? { ...photos[photoIdx].adjustments! } : undefined,
       timestamp: Date.now(),
       sizeDifferenceBytes: 0
     };
 
     photoVersions.push(newVersion);
     photos[photoIdx].currentFilter = filterName;
+
+    res.json({ photo: photos[photoIdx], version: newVersion });
+  });
+
+  // API Endpoint: Apply fine-tuning adjustments (brightness, contrast, saturation, warmth)
+  app.post("/api/photos/:id/adjustments", (req, res) => {
+    const photoId = parseInt(req.params.id);
+    const { adjustments } = req.body;
+
+    const photoIdx = photos.findIndex((p) => p.id === photoId);
+    if (photoIdx === -1) {
+      res.status(404).json({ error: "Photo not found" });
+      return;
+    }
+
+    photos[photoIdx].adjustments = adjustments;
+
+    const currentVersions = photoVersions.filter((v) => v.photoId === photoId);
+    const nextVersionNum = currentVersions.length + 1;
+
+    const newVersion: PhotoEditVersionEntity = {
+      id: nextVersionId++,
+      photoId,
+      versionNumber: nextVersionNum,
+      filterName: photos[photoIdx].currentFilter ? `${photos[photoIdx].currentFilter} + Tuned` : "Fine Tuned",
+      adjustments: { ...adjustments },
+      timestamp: Date.now(),
+      sizeDifferenceBytes: 0
+    };
+
+    photoVersions.push(newVersion);
 
     res.json({ photo: photos[photoIdx], version: newVersion });
   });
@@ -336,7 +443,8 @@ async function startServer() {
 
     const photoIdx = photos.findIndex((p) => p.id === photoId);
     if (photoIdx === -1) {
-      return res.status(404).json({ error: "Photo not found" });
+      res.status(404).json({ error: "Photo not found" });
+      return;
     }
 
     // Delete versions higher than selected
@@ -344,12 +452,18 @@ async function startServer() {
       (v) => !(v.photoId === photoId && v.versionNumber > versionNumber)
     );
 
-    // Find filter name for the target version
+    // Find filter name and adjustments for the target version
     const targetVersion = photoVersions.find(
       (v) => v.photoId === photoId && v.versionNumber === versionNumber
     );
 
     photos[photoIdx].currentFilter = targetVersion ? targetVersion.filterName : null;
+    photos[photoIdx].adjustments = targetVersion?.adjustments || {
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      warmth: 0
+    };
 
     res.json(photos[photoIdx]);
   });
@@ -360,14 +474,51 @@ async function startServer() {
 
     const photoIdx = photos.findIndex((p) => p.id === photoId);
     if (photoIdx === -1) {
-      return res.status(404).json({ error: "Photo not found" });
+      res.status(404).json({ error: "Photo not found" });
+      return;
     }
 
     // Clear version history
     photoVersions = photoVersions.filter((v) => v.photoId !== photoId);
     photos[photoIdx].currentFilter = null;
+    photos[photoIdx].adjustments = { brightness: 0, contrast: 0, saturation: 0, warmth: 0 };
 
     res.json(photos[photoIdx]);
+  });
+
+  // API Endpoint: Batch sync selected photos
+  app.post("/api/photos/batch-sync", (req, res) => {
+    const { photoIds, targetCloud } = req.body;
+    if (!Array.isArray(photoIds) || photoIds.length === 0) {
+      res.status(400).json({ error: "photoIds array is required" });
+      return;
+    }
+
+    const cloudLocation = targetCloud || "AuraCloud Storage";
+    let syncedCount = 0;
+    photos.forEach((p) => {
+      if (photoIds.includes(p.id)) {
+        p.hasBackupSynced = true;
+        p.backupLocation = cloudLocation;
+        syncedCount++;
+      }
+    });
+
+    res.json({ success: true, syncedCount });
+  });
+
+  // API Endpoint: Batch delete selected photos
+  app.post("/api/photos/batch-delete", (req, res) => {
+    const { photoIds } = req.body;
+    if (!Array.isArray(photoIds) || photoIds.length === 0) {
+      res.status(400).json({ error: "photoIds array is required" });
+      return;
+    }
+
+    photos = photos.filter((p) => !photoIds.includes(p.id));
+    photoVersions = photoVersions.filter((v) => !photoIds.includes(v.photoId));
+
+    res.json({ success: true, deletedCount: photoIds.length });
   });
 
   // API Endpoint: Delete photo
@@ -376,7 +527,8 @@ async function startServer() {
 
     const photoIdx = photos.findIndex((p) => p.id === photoId);
     if (photoIdx === -1) {
-      return res.status(404).json({ error: "Photo not found" });
+      res.status(404).json({ error: "Photo not found" });
+      return;
     }
 
     photos.splice(photoIdx, 1);
@@ -405,7 +557,8 @@ async function startServer() {
     // Check for duplicates
     const duplicate = photos.find((p) => p.originalContentHash === hash);
     if (duplicate) {
-      return res.json({ status: "duplicate", duplicateOf: duplicate });
+      res.json({ status: "duplicate", duplicateOf: duplicate });
+      return;
     }
 
     const newPhoto: PhotoEntity = {
@@ -438,12 +591,14 @@ async function startServer() {
   // API Endpoint: Trigger Face group scanning (Gemini + Simulated fallback)
   app.post("/api/photos/scan", async (req, res) => {
     if (isScanning) {
-      return res.status(400).json({ error: "Scan already in progress" });
+      res.status(400).json({ error: "Scan already in progress" });
+      return;
     }
 
     const unscanned = photos.filter((p) => p.faceTag === null);
     if (unscanned.length === 0) {
-      return res.json({ message: "All files already scanned", photos });
+      res.json({ message: "All files already scanned", photos });
+      return;
     }
 
     isScanning = true;
@@ -584,13 +739,15 @@ async function startServer() {
   // API Endpoint: Trigger Cloud Backup sync (simulated)
   app.post("/api/photos/sync", (req, res) => {
     if (isSyncing) {
-      return res.status(400).json({ error: "Sync already in progress" });
+      res.status(400).json({ error: "Sync already in progress" });
+      return;
     }
 
     const { cloudAppName } = req.body;
     const unsynced = photos.filter((p) => !p.hasBackupSynced);
     if (unsynced.length === 0) {
-      return res.json({ message: "All photos already synced", photos });
+      res.json({ message: "All photos already synced", photos });
+      return;
     }
 
     isSyncing = true;

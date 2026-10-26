@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { Image as ImageIcon, Sparkles, Cloud, HardDrive, Cpu, RefreshCw, BadgeCheck } from "lucide-react";
-import { PhotoEntity, PhotoEditVersionEntity } from "./types";
+import {
+  Image as ImageIcon,
+  Sparkles,
+  Cloud,
+  HardDrive,
+  Cpu,
+  RefreshCw,
+  BadgeCheck,
+  Camera
+} from "lucide-react";
+import { PhotoEntity, PhotoEditVersionEntity, ImageAdjustments } from "./types";
 import { GalleryFeed } from "./components/GalleryFeed";
 import { AIAlbums } from "./components/AIAlbums";
 import { CloudSync } from "./components/CloudSync";
@@ -48,7 +57,7 @@ export default function App() {
           if (updatedSelected) {
             setSelectedPhoto(updatedSelected);
           } else {
-            setSelectedPhoto(null); // Deleted
+            setSelectedPhoto(null);
           }
         }
       }
@@ -70,12 +79,10 @@ export default function App() {
     }
   };
 
-  // Run initial photos query
   useEffect(() => {
     fetchPhotos();
   }, []);
 
-  // Fetch versions whenever selected photo changes
   useEffect(() => {
     if (selectedPhoto) {
       fetchVersions(selectedPhoto.id);
@@ -84,7 +91,7 @@ export default function App() {
     }
   }, [selectedPhoto]);
 
-  // 3. Apply filter effect
+  // 3. Apply preset filter
   const handleApplyFilter = async (filterName: string) => {
     if (!selectedPhoto) return;
     try {
@@ -94,14 +101,45 @@ export default function App() {
         body: JSON.stringify({ filterName })
       });
       if (res.ok) {
-        await fetchPhotos(); // refresh lists
+        await fetchPhotos();
       }
     } catch (err) {
       console.error("Failed to apply filter", err);
     }
   };
 
-  // 4. Revert to original file
+  // 4. Apply fine-tuning adjustments
+  const handleApplyAdjustments = async (adjustments: ImageAdjustments) => {
+    if (!selectedPhoto) return;
+    try {
+      const res = await fetch(`/api/photos/${selectedPhoto.id}/adjustments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adjustments })
+      });
+      if (res.ok) {
+        await fetchPhotos();
+      }
+    } catch (err) {
+      console.error("Failed to apply adjustments", err);
+    }
+  };
+
+  // 5. Toggle favorite status
+  const handleToggleFavorite = async (photoId: number) => {
+    try {
+      const res = await fetch(`/api/photos/${photoId}/favorite`, {
+        method: "PATCH"
+      });
+      if (res.ok) {
+        await fetchPhotos();
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite", err);
+    }
+  };
+
+  // 6. Revert to original
   const handleRevertOriginal = async () => {
     if (!selectedPhoto) return;
     try {
@@ -116,7 +154,7 @@ export default function App() {
     }
   };
 
-  // 5. Revert to specific version historical marker
+  // 7. Revert to specific version
   const handleRevertVersion = async (v: PhotoEditVersionEntity) => {
     if (!selectedPhoto) return;
     try {
@@ -133,7 +171,7 @@ export default function App() {
     }
   };
 
-  // 6. Delete photo
+  // 8. Delete photo
   const handleDeletePhoto = async () => {
     if (!selectedPhoto) return;
     try {
@@ -149,7 +187,39 @@ export default function App() {
     }
   };
 
-  // 7. Simulated upload (with deduplication blocking checking)
+  // 9. Batch sync photos
+  const handleBatchSync = async (photoIds: number[]) => {
+    try {
+      const res = await fetch("/api/photos/batch-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoIds, targetCloud: activeBackupCloud })
+      });
+      if (res.ok) {
+        await fetchPhotos();
+      }
+    } catch (err) {
+      console.error("Batch sync failed", err);
+    }
+  };
+
+  // 10. Batch delete photos
+  const handleBatchDelete = async (photoIds: number[]) => {
+    try {
+      const res = await fetch("/api/photos/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoIds })
+      });
+      if (res.ok) {
+        await fetchPhotos();
+      }
+    } catch (err) {
+      console.error("Batch delete failed", err);
+    }
+  };
+
+  // 11. Simulated upload
   const handleSimulateImport = async (params: {
     resourceName: string;
     title: string;
@@ -173,7 +243,7 @@ export default function App() {
     }
   };
 
-  // 8. Trigger server face grouping scanning
+  // 12. Trigger AI Scanning
   const handleStartScan = async () => {
     try {
       const res = await fetch("/api/photos/scan", { method: "POST" });
@@ -186,7 +256,7 @@ export default function App() {
     }
   };
 
-  // 9. Trigger server backup sync
+  // 13. Trigger Cloud Sync
   const handleStartSync = async () => {
     try {
       const res = await fetch("/api/photos/sync", {
@@ -217,7 +287,7 @@ export default function App() {
             setIsScanning(data.isScanning);
             setScanProgress(data.scanProgress);
             if (!data.isScanning) {
-              await fetchPhotos(); // Scan complete, refresh tags
+              await fetchPhotos();
             }
           }
         } catch (err) {
@@ -237,7 +307,7 @@ export default function App() {
             setSyncCurrent(data.syncCurrent);
             setSyncTotal(data.syncTotal);
             if (!data.isSyncing) {
-              await fetchPhotos(); // Sync complete, refresh indicators
+              await fetchPhotos();
             }
           }
         } catch (err) {
@@ -252,84 +322,96 @@ export default function App() {
     };
   }, [isScanning, isSyncing]);
 
+  // Compute previous and next photo in current view
+  const currentPhotoIndex = selectedPhoto
+    ? photos.findIndex((p) => p.id === selectedPhoto.id)
+    : -1;
+  const hasPrev = currentPhotoIndex > 0;
+  const hasNext = currentPhotoIndex !== -1 && currentPhotoIndex < photos.length - 1;
+
+  const handleNavigatePrev = () => {
+    if (hasPrev) setSelectedPhoto(photos[currentPhotoIndex - 1]);
+  };
+
+  const handleNavigateNext = () => {
+    if (hasNext) setSelectedPhoto(photos[currentPhotoIndex + 1]);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      {/* Universal Desktop & Tablet Top-Rail Header */}
-      <header className="sticky top-0 z-40 bg-white border-b border-gray-150 shadow-xs px-4 py-3">
+    <div className="min-h-screen bg-stone-50 flex flex-col font-sans text-stone-900 selection:bg-stone-900 selection:text-white">
+      {/* Top Header Bar */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-2xs px-4 sm:px-6 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-brand-purple text-white flex items-center justify-center shadow-md shadow-brand-purple/20">
-              <Sparkles size={18} className="animate-pulse" />
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-stone-900 text-white flex items-center justify-center font-bold text-xs tracking-tighter">
+              AU
             </div>
             <div>
-              <h1 className="text-sm font-extrabold tracking-tight text-gray-900 uppercase font-display flex items-center gap-1">
-                Aura AI Gallery
-                <span className="text-[9px] font-bold bg-brand-purple/10 text-brand-purple px-1.5 py-0.5 rounded-full lowercase font-mono">
-                  v2.0
-                </span>
-              </h1>
-              <span className="text-[10px] text-gray-500 font-medium block">
-                Non-Destructive Neural Media Organizer
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-bold tracking-tight text-stone-900 uppercase font-mono">
+                  Aura Studio Gallery
+                </h1>
+                <span className="text-[10px] font-mono text-stone-500">v2.5</span>
+              </div>
+              <span className="text-[11px] text-stone-500 font-medium block">
+                Parametric Neural Media Organizer
               </span>
             </div>
           </div>
 
-          {/* Interactive system notifications */}
-          <div className="hidden sm:flex items-center gap-4 text-xs font-mono text-gray-500">
+          {/* Interactive Status Indicators */}
+          <div className="hidden sm:flex items-center gap-4 text-xs font-mono text-stone-500">
             {isScanning && (
-              <span className="flex items-center gap-1 text-brand-purple animate-pulse">
-                <Cpu size={12} />
-                Scanning AI faces {Math.round(scanProgress * 100)}%
+              <span className="flex items-center gap-1.5 text-stone-900 animate-pulse font-medium">
+                <Cpu size={13} />
+                Scanning embeddings {Math.round(scanProgress * 100)}%
               </span>
             )}
             {isSyncing && (
-              <span className="flex items-center gap-1 text-blue-600 animate-pulse">
-                <RefreshCw size={12} className="animate-spin" />
-                Syncing backup {syncCurrent}/{syncTotal}
+              <span className="flex items-center gap-1.5 text-stone-900 animate-pulse font-medium">
+                <RefreshCw size={13} className="animate-spin" />
+                Vault sync {syncCurrent}/{syncTotal}
               </span>
             )}
             {!isScanning && !isSyncing && (
-              <span className="flex items-center gap-1 text-green-600">
-                <BadgeCheck size={13} />
-                Protection Engine Active
+              <span className="flex items-center gap-1.5 text-emerald-700">
+                <BadgeCheck size={14} className="text-emerald-600" />
+                <span>Vault Protected · 0 Duplicates</span>
               </span>
             )}
           </div>
         </div>
       </header>
 
-      {/* Main Responsive Body Frame */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6 pb-24 flex flex-col gap-6">
-        {/* Navigation Tab Pills */}
-        <div className="flex items-center bg-gray-100 p-1.5 rounded-2xl border border-gray-150 self-start">
+      {/* Main Responsive Body */}
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 pb-24 flex flex-col gap-6">
+        {/* Navigation Tabs (Zero-pill segmented style) */}
+        <div className="flex items-center bg-stone-100 p-1 rounded-xl border border-stone-200 self-start">
           {[
             { id: 0, label: "Gallery Feed", icon: <ImageIcon size={14} /> },
             { id: 1, label: "AI Albums", icon: <Sparkles size={14} /> },
-            { id: 2, label: "Cloud Backup", icon: <Cloud size={14} /> },
+            { id: 2, label: "Cloud Vault", icon: <Cloud size={14} /> },
             { id: 3, label: "Optimizer", icon: <HardDrive size={14} /> }
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => {
                 setActiveTab(tab.id);
-                // Exit album details automatically if going to a non-gallery view
-                if (tab.id !== 0) {
-                  setSelectedFaceAlbum(null);
-                }
+                if (tab.id !== 0) setSelectedFaceAlbum(null);
               }}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                 activeTab === tab.id
-                  ? "bg-white text-brand-purple shadow-sm border border-gray-200/50"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-white text-stone-900 shadow-xs font-semibold"
+                  : "text-stone-600 hover:text-stone-900"
               }`}
             >
               {tab.icon}
-              {tab.label}
+              <span>{tab.label}</span>
             </button>
           ))}
         </div>
 
-        {/* Dynamic Tab Renderers */}
+        {/* Dynamic Views */}
         <div className="flex-1 flex flex-col">
           {activeTab === 0 && (
             <GalleryFeed
@@ -337,6 +419,9 @@ export default function App() {
               selectedFaceAlbum={selectedFaceAlbum}
               onExitFaceAlbum={() => setSelectedFaceAlbum(null)}
               onPhotoSelect={(p) => setSelectedPhoto(p)}
+              onToggleFavorite={handleToggleFavorite}
+              onBatchSync={handleBatchSync}
+              onBatchDelete={handleBatchDelete}
             />
           )}
 
@@ -348,7 +433,7 @@ export default function App() {
               onStartScan={handleStartScan}
               onAlbumClick={(face) => {
                 setSelectedFaceAlbum(face);
-                setActiveTab(0); // Switch back to gallery list automatically
+                setActiveTab(0);
               }}
             />
           )}
@@ -377,41 +462,45 @@ export default function App() {
         </div>
       </main>
 
-      {/* Floating full-screen details workspace details panel */}
+      {/* Full-Screen Photo Details Workbench */}
       {selectedPhoto && (
         <PhotoDetails
           photo={selectedPhoto}
           versions={versions}
           onDismiss={() => setSelectedPhoto(null)}
           onApplyFilter={handleApplyFilter}
+          onApplyAdjustments={handleApplyAdjustments}
           onRevertOriginal={handleRevertOriginal}
           onRevertVersion={handleRevertVersion}
           onDelete={handleDeletePhoto}
+          onToggleFavorite={() => handleToggleFavorite(selectedPhoto.id)}
+          onNavigatePrev={handleNavigatePrev}
+          onNavigateNext={handleNavigateNext}
+          hasPrev={hasPrev}
+          hasNext={hasNext}
         />
       )}
 
-      {/* Touch Target Navigation Bar Footer for Mobile screens */}
-      <footer className="fixed bottom-0 inset-x-0 bg-white border-t border-gray-150 py-2.5 px-4 flex justify-around items-center z-30 shadow-lg md:hidden">
+      {/* Mobile Touch Target Navigation Footer */}
+      <footer className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-stone-200 py-2 px-4 flex justify-around items-center z-30 shadow-lg md:hidden">
         {[
           { id: 0, label: "Feed", icon: <ImageIcon size={18} /> },
           { id: 1, label: "AI Albums", icon: <Sparkles size={18} /> },
-          { id: 2, label: "Backup", icon: <Cloud size={18} /> },
-          { id: 3, label: "Storage", icon: <HardDrive size={18} /> }
+          { id: 2, label: "Vault", icon: <Cloud size={18} /> },
+          { id: 3, label: "Optimizer", icon: <HardDrive size={18} /> }
         ].map((tab) => (
           <button
             key={tab.id}
             onClick={() => {
               setActiveTab(tab.id);
-              if (tab.id !== 0) {
-                setSelectedFaceAlbum(null);
-              }
+              if (tab.id !== 0) setSelectedFaceAlbum(null);
             }}
             className={`flex flex-col items-center justify-center p-1 cursor-pointer transition ${
-              activeTab === tab.id ? "text-brand-purple font-boldScale" : "text-gray-400 hover:text-gray-600"
+              activeTab === tab.id ? "text-stone-900 font-semibold" : "text-stone-400 hover:text-stone-600"
             }`}
           >
             {tab.icon}
-            <span className="text-[9px] mt-1 font-semibold">{tab.label}</span>
+            <span className="text-[10px] mt-1 font-medium">{tab.label}</span>
           </button>
         ))}
       </footer>
