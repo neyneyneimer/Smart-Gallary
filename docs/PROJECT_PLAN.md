@@ -43,6 +43,10 @@ The v2.1 reconciliation supersedes the earlier phase ordering. Real media ingest
 Use stable dependency releases only; pin versions centrally in the version catalog. The selected Kotlin/Hilt/KSP combination is a deliberate conservative baseline from v2.1 and must be validated by the actual CI build. Do not silently upgrade one part of the Android Gradle toolchain independently.
 
 
+### UI design-system baseline
+
+The Android UI implementation follows the user-supplied Aura_AI_Gallery_UI_Design_System.html. Preserve the design's semantic colour rule (amber means user action; spectral means model inference), square image geometry, hairline contact-sheet grid, three bundled typefaces, tabular mono metadata and five screen destinations. When a feature is not built, show a truthful empty/planned state instead of the reference mockup's illustrative sample metrics.
+
 ### Verified implementation notes (19 November 2026)
 
 - Coil is pinned at 3.0.4 with Kotlin 2.0.21. Coil 3.3.0 resolved to Kotlin 2.2 metadata and did not compile with the approved Kotlin 2.0.21 compiler.

@@ -26,6 +26,20 @@ Debug APK: ./gradlew --no-daemon :app:assembleDebug
 
 The debug APK is written to app/build/outputs/apk/debug/app-debug.apk. The release APK is currently unsigned; see the project plan for the signing policy.\n\nRoom 2.8.5 schema processing currently uses KAPT because Room\x27s release KSP path fails under the pinned Kotlin 2.0.21 compiler. Hilt remains on KSP. Review this documented exception during toolchain upgrades.
 
+## UI design system
+
+The Compose UI follows the supplied Aura_AI_Gallery_UI_Design_System.html:
+
+- Graphite surfaces (#0A0A0B, #101011, #171719) and warm paper text.
+- Safelight amber (#E0A24A) is reserved for user action and selection; spectral blue-violet is reserved for real model inference.
+- Instrument Serif for editorial headings, Manrope for controls/body, and JetBrains Mono for counts and machine metadata.
+- Square image frames, 1dp contact-sheet gutters, hairline separators and 10dp control corners.
+- Five screens: Library, People, Edit, Optimize and Settings.
+
+Instrument Serif, Manrope and JetBrains Mono are bundled under app/src/main/res/font; their OFL license texts are included in app/src/main/assets/font-licenses. Fonts do not load from the network.
+
+The People screen does not show fabricated clusters or confidence values. Edit provides a local tone preview and original comparison; export is explicitly deferred to M2. Optimize and Settings display live indexed-photo/database facts and clearly label analysis/backup features that are not implemented yet.
+
 ## M1 media access
 
 - Photo Picker is available without broad media permissions.

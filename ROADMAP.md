@@ -46,6 +46,7 @@
 - [ ] Handle permission denial, revoked access, empty libraries and inaccessible URIs without crashing.
 - [x] Add favourite toggle and persist its state in Room.
 - [x] Add loading, empty, permission-required, partial-access and recoverable-error UI states.
+- [x] Apply the supplied five-screen UI design system: graphite/safelight palette, bundled licensed typefaces, square contact-sheet grid, hairline controls, localized metadata and the Library / People / Edit / Optimize / Settings destinations.
 - [ ] Add focused tests for media mapping, repository refresh behavior and favourite persistence. Six permission-policy unit tests currently pass.
 - [ ] Verify on API 33, 34 and 36, including partial photo selection.
 - [ ] Run a 1,000+ item scrolling/memory test on a real device or representative emulator.
@@ -139,7 +140,9 @@
 
 | Date | Change |
 |---|---|
-| 2026-11-19 | Established v2.1 milestone order; created legacy reference branch; added project plan. |\n| 2026-11-19 | Created android/rebuild-m1; added launcher app, MediaStore/Photo Picker repository, Room favourites, permission-aware Compose grid, schema v1, six permission tests and Android CI workflow. Local debug/release/check/unit-test build passed on JDK 21. Device/API and JDK 17 CI gates remain pending. |
+| 2026-11-19 | Established v2.1 milestone order; created legacy reference branch; added project plan. |
+| 2026-11-19 | Applied the uploaded Aura UI design system to Compose, bundled Instrument Serif/Manrope/JetBrains Mono with OFL licences, added all five destinations and a non-destructive tone preview. Unimplemented M2–M4 data is clearly labelled rather than shown as mock metrics. |
+| 2026-11-19 | Created android/rebuild-m1; added launcher app, MediaStore/Photo Picker repository, Room favourites, permission-aware Compose grid, schema v1, six permission tests and Android CI workflow. Local debug/release/check/unit-test build passed on JDK 21. Device/API and JDK 17 CI gates remain pending. |
 
 ## Status vocabulary
 
