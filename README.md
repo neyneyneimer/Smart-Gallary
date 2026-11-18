@@ -1,21 +1,42 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Aura AI Gallery — Android
 
-# Run and deploy your AI Studio app
+Aura AI Gallery is being rebuilt as a phone-first Android gallery. The Android app owns the on-device media catalogue; media is discovered from MediaStore or chosen by the user through Android Photo Picker.
 
-This contains everything you need to run your app locally.
+## Current build
 
-View your app in AI Studio: https://ai.studio/apps/13ae5624-0dce-447e-bfa5-4441b7c17642
+- Branch: android/rebuild-m1
+- Package: ai.sakana.aura.gallery
+- M0: Android foundation, launcher Activity, adaptive icon and CI workflow implemented; awaiting JDK 17 GitHub Actions verification
+- M1: real MediaStore/Photo Picker grid, Android 14+ partial-access UI and Room-backed favourites implemented; runtime/device acceptance is still in progress
 
-## Run Locally
+The previous AI Studio/web implementation is preserved on legacy-reference/ai-studio-web as a read-only reference. It is not part of this Android app.
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+## Build requirements
 
+- JDK 17+
+- Android SDK platform 36
+- Gradle wrapper 8.13 (committed)
+- Android Gradle Plugin 8.13.0
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
+## Build and test
+
+Build commands: ./gradlew --no-daemon :app:check
+Unit tests: ./gradlew --no-daemon :app:testDebugUnitTest
+Debug APK: ./gradlew --no-daemon :app:assembleDebug
+
+The debug APK is written to app/build/outputs/apk/debug/app-debug.apk. The release APK is currently unsigned; see the project plan for the signing policy.\n\nRoom 2.8.5 schema processing currently uses KAPT because Room\x27s release KSP path fails under the pinned Kotlin 2.0.21 compiler. Hilt remains on KSP. Review this documented exception during toolchain upgrades.
+
+## M1 media access
+
+- Photo Picker is available without broad media permissions.
+- Full device-image access requests the version-appropriate Android permissions.
+- Android 14+ partial selection is supported and shown explicitly.
+- Favourites are stored in Room and survive process restarts.
+- The gallery displays content URIs from the device, not bundled sample images.
+
+## Project documentation
+
+- docs/PROJECT_PLAN.md
+- ROADMAP.md
+
+See the roadmap for implementation scope, acceptance gates and current status.

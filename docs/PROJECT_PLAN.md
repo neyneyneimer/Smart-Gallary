@@ -42,6 +42,14 @@ The v2.1 reconciliation supersedes the earlier phase ordering. Real media ingest
 
 Use stable dependency releases only; pin versions centrally in the version catalog. The selected Kotlin/Hilt/KSP combination is a deliberate conservative baseline from v2.1 and must be validated by the actual CI build. Do not silently upgrade one part of the Android Gradle toolchain independently.
 
+
+### Verified implementation notes (19 November 2026)
+
+- Coil is pinned at 3.0.4 with Kotlin 2.0.21. Coil 3.3.0 resolved to Kotlin 2.2 metadata and did not compile with the approved Kotlin 2.0.21 compiler.
+- Hilt 2.52 continues to use KSP 2.0.21-1.0.28. Room 2.8.5 schema processing is routed through KAPT for now: Room's release KSP task failed with an AbstractMethodError in the Room schema serializer/classloader path under the pinned Kotlin compiler. KAPT successfully generates both Room implementation classes and the version 1 schema while Hilt stays on KSP.
+- The Kotlin KAPT plugin warns that it falls back to language version 1.9 while generating Room stubs from Kotlin 2.0 sources. Current Room entity/DAO declarations use syntax supported by that stub path; re-evaluate this exception during the next Kotlin/KSP toolchain upgrade. Do not claim schema export is verified from KSP.
+- The first integrated build passed :app:testDebugUnitTest, :app:check, :app:assembleDebug and :app:assembleRelease locally. The build host currently reports JDK 21; JDK 17 GitHub Actions validation and Android device/API-level runtime tests remain outstanding.
+
 ## 4. Architecture and data rules
 
 Use a simple Clean Architecture/MVVM shape inside the single app module until M4:
