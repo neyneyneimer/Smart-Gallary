@@ -1,5 +1,6 @@
 package ai.sakana.aura.gallery.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -10,6 +11,7 @@ import androidx.room.PrimaryKey
         Index(value = ["contentUri"], unique = true),
         Index(value = ["dateTakenEpochMillis"]),
         Index(value = ["isFavorite", "isAvailable"]),
+        Index(value = ["mediaType"]),
     ],
 )
 data class MediaItemEntity(
@@ -26,4 +28,10 @@ data class MediaItemEntity(
     val isFavorite: Boolean = false,
     val sourceType: String,
     val isAvailable: Boolean = true,
+    @ColumnInfo(defaultValue = "'IMAGE'") val mediaType: String = "IMAGE",
+    @ColumnInfo(defaultValue = "'Other'") val bucketName: String = "Other",
+    @ColumnInfo(defaultValue = "''") val relativePath: String = "",
+    @ColumnInfo(defaultValue = "0") val durationMillis: Long = 0L,
+    @ColumnInfo(defaultValue = "0") val isTrashed: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val trashedAtEpochMillis: Long = 0L,
 )

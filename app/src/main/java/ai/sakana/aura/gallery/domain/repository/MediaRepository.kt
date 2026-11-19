@@ -9,4 +9,7 @@ interface MediaRepository {
     suspend fun refreshMediaStore()
     suspend fun importPickedMedia(uris: List<Uri>)
     suspend fun toggleFavorite(contentUri: String)
+    fun observeTrashedMedia(): Flow<List<MediaItem>>
+    suspend fun moveToTrash(contentUri: String)
+    suspend fun restoreFromTrash(contentUri: String)
 }

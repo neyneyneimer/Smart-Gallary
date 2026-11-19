@@ -1,58 +1,58 @@
 package ai.sakana.aura.gallery.platform
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MediaPermissionPolicyTest {
     @Test
     fun `api 32 requests legacy external storage permission`() {
-        assertEquals(
-            listOf("android.permission.READ_EXTERNAL_STORAGE"),
-            MediaPermissionPolicy.requiredPermissions(32),
-        )
+        assertEquals(listOf("android.permission.READ_EXTERNAL_STORAGE"), MediaPermissionPolicy.requiredPermissions(32))
     }
 
     @Test
-    fun `api 33 requests images permission`() {
+    fun `api 33 requests both image and video permissions`() {
         assertEquals(
-            listOf("android.permission.READ_MEDIA_IMAGES"),
+            listOf("android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO"),
             MediaPermissionPolicy.requiredPermissions(33),
         )
     }
 
     @Test
-    fun `api 34 and newer request full and selected photo access together`() {
+    fun `api 34 and newer request image video and selected media permissions`() {
         assertEquals(
             listOf(
                 "android.permission.READ_MEDIA_IMAGES",
+                "android.permission.READ_MEDIA_VIDEO",
                 "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
             ),
             MediaPermissionPolicy.requiredPermissions(34),
         )
-        assertTrue(MediaPermissionPolicy.requiredPermissions(36).contains(
-            "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-        ))
     }
 
     @Test
-    fun `full media access takes precedence when both grants exist`() {
+    fun `both image and video grants mean full access`() {
         assertEquals(
             MediaAccessLevel.FULL,
             MediaPermissionPolicy.resolveAccess(34, setOf(
                 "android.permission.READ_MEDIA_IMAGES",
-                "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+                "android.permission.READ_MEDIA_VIDEO",
             )),
         )
     }
 
     @Test
-    fun `selected media access is a supported partial state`() {
+    fun `one media grant without selected media grant is partial access`() {
         assertEquals(
             MediaAccessLevel.PARTIAL,
-            MediaPermissionPolicy.resolveAccess(34, setOf(
-                "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-            )),
+            MediaPermissionPolicy.resolveAccess(33, setOf("android.permission.READ_MEDIA_IMAGES")),
+        )
+    }
+
+    @Test
+    fun `selected media grant is partial access`() {
+        assertEquals(
+            MediaAccessLevel.PARTIAL,
+            MediaPermissionPolicy.resolveAccess(34, setOf("android.permission.READ_MEDIA_VISUAL_USER_SELECTED")),
         )
     }
 

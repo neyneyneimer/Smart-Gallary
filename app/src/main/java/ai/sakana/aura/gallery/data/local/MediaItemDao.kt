@@ -8,8 +8,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MediaItemDao {
-    @Query("SELECT * FROM media_items WHERE isAvailable = 1 ORDER BY dateTakenEpochMillis DESC, id DESC")
+    @Query("SELECT * FROM media_items WHERE isAvailable = 1 AND isTrashed = 0 ORDER BY dateTakenEpochMillis DESC, id DESC")
     fun observeAvailable(): Flow<List<MediaItemEntity>>
+
+    @Query("SELECT * FROM media_items WHERE isAvailable = 1 AND isTrashed = 1 ORDER BY trashedAtEpochMillis DESC, id DESC")
+    fun observeTrashed(): Flow<List<MediaItemEntity>>
 
     @Query("SELECT * FROM media_items")
     suspend fun getAllSnapshot(): List<MediaItemEntity>
@@ -25,4 +28,10 @@ interface MediaItemDao {
 
     @Query("UPDATE media_items SET isFavorite = CASE WHEN isFavorite = 1 THEN 0 ELSE 1 END WHERE contentUri = :contentUri")
     suspend fun toggleFavorite(contentUri: String)
+
+    @Query("UPDATE media_items SET isTrashed = 1, trashedAtEpochMillis = :trashedAt WHERE contentUri = :contentUri")
+    suspend fun moveToTrash(contentUri: String, trashedAt: Long)
+
+    @Query("UPDATE media_items SET isTrashed = 0, trashedAtEpochMillis = 0 WHERE contentUri = :contentUri")
+    suspend fun restoreFromTrash(contentUri: String)
 }

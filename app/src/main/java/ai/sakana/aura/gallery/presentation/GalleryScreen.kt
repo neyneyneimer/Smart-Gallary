@@ -1,12 +1,21 @@
 package ai.sakana.aura.gallery.presentation
 
+import android.content.ClipData
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -17,20 +26,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -48,8 +56,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,11 +63,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
+import ai.sakana.aura.gallery.BuildConfig
+import ai.sakana.aura.gallery.diagnostics.DiagnosticReportExporter
 import ai.sakana.aura.gallery.design.AuraTokens
 import ai.sakana.aura.gallery.design.AuraToneColorMatrix
 import ai.sakana.aura.gallery.design.InstrumentSerif
@@ -70,28 +79,33 @@ import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.platform.MediaAccessLevel
 import ai.sakana.aura.gallery.platform.MediaPermissionPolicy
-import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
-import java.text.NumberFormat
 import java.util.Locale
+import timber.log.Timber
 
-private enum class Destination { LIBRARY, PEOPLE, OPTIMIZE, SETTINGS }
-private enum class LibraryFilter { ALL, PHOTOS, PEOPLE, PLACES, VIDEO }
+private enum class Destination { PHOTOS, ALBUMS, EXPLORE, PEOPLE, AI_SETS, OPTIMIZE, SETTINGS }
+private enum class LibraryFilter { ALL, PHOTOS, VIDEOS, FAVORITES }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GalleryRoute(viewModel: GalleryViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var access by remember { mutableStateOf(readMediaAccess(context)) }
     val items by viewModel.mediaItems.collectAsState()
+    val trashedItems by viewModel.trashedItems.collectAsState()
     val refreshing by viewModel.isRefreshing.collectAsState()
     val error by viewModel.errorMessage.collectAsState()
-    var destination by remember { mutableStateOf(Destination.LIBRARY) }
+    var destination by remember { mutableStateOf(Destination.PHOTOS) }
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var activeAlbum by remember { mutableStateOf<ai.sakana.aura.gallery.domain.grouping.MediaAlbum?>(null) }
+    var showRecentlyDeleted by remember { mutableStateOf(false) }
+    var viewing by remember { mutableStateOf<MediaItem?>(null) }
     var editing by remember { mutableStateOf<MediaItem?>(null) }
+    var pendingTrashUris by remember { mutableStateOf<List<String>?>(null) }
+    var moreOpen by remember { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(maxItems = 50),
@@ -112,28 +126,83 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
         if (access != MediaAccessLevel.DENIED) viewModel.refresh()
     }
 
-    val choosePhotos = {
-        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    val chooseMedia = {
+        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
     }
     val requestAccess = {
         permissionRequest.launch(MediaPermissionPolicy.requiredPermissions(Build.VERSION.SDK_INT).toTypedArray())
     }
 
-    if (editing != null) {
-        Scaffold(
-            containerColor = AuraTokens.Void,
-            bottomBar = {
-                AuraBottomBar(destination) {
-                    editing = null
-                    destination = it
+    if (pendingTrashUris != null) {
+        AlertDialog(
+            onDismissRequest = { pendingTrashUris = null },
+            title = { Text("Move to Recently Deleted?") },
+            text = { Text("This removes the item from Aura’s main library. The original file stays in its device folder and can be restored here.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingTrashUris.orEmpty().forEach(viewModel::moveToTrash)
+                    pendingTrashUris = null
                     selected = emptySet()
-                }
+                    viewing = null
+                }) { Text("Move to Recently Deleted") }
             },
-        ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding)) {
-                AuraEditorScreen(editing!!, onBack = { editing = null })
-            }
-        }
+            dismissButton = { TextButton(onClick = { pendingTrashUris = null }) { Text("Cancel") } },
+        )
+    }
+
+    if (editing != null) {
+        BackHandler { editing = null }
+        AuraEditorScreen(
+            item = editing!!,
+            onBack = { editing = null },
+            onSaveCopy = { matrix ->
+                runCatching { ai.sakana.aura.gallery.data.export.MediaEditorExporter.saveToneEdit(context, editing!!, matrix.values) }
+                    .onSuccess {
+                        android.widget.Toast.makeText(context, "Edited copy saved to Pictures/Aura Edits", android.widget.Toast.LENGTH_LONG).show()
+                        viewModel.refresh()
+                    }
+                    .onFailure { error ->
+                        Timber.e(error, "Unable to export edited photo")
+                        android.widget.Toast.makeText(context, error.message ?: "Couldn't save edited copy", android.widget.Toast.LENGTH_LONG).show()
+                    }
+            },
+        )
+        return
+    }
+
+    if (viewing != null) {
+        BackHandler { viewing = null }
+        MediaViewerScreen(
+            item = items.firstOrNull { it.contentUri == viewing!!.contentUri }
+                ?: trashedItems.firstOrNull { it.contentUri == viewing!!.contentUri }
+                ?: viewing!!,
+            onBack = { viewing = null },
+            onShare = { shareMedia(context, listOf(viewing!!)) },
+            onFavorite = { viewModel.toggleFavorite(viewing!!.contentUri) },
+            onEdit = { editing = viewing },
+            onDelete = { pendingTrashUris = listOf(viewing!!.contentUri) },
+        )
+        return
+    }
+
+    if (showRecentlyDeleted) {
+        BackHandler { showRecentlyDeleted = false }
+        RecentlyDeletedScreen(
+            items = trashedItems,
+            onBack = { showRecentlyDeleted = false },
+            onRestore = viewModel::restoreFromTrash,
+            onOpen = { viewing = it },
+        )
+        return
+    }
+
+    if (activeAlbum != null) {
+        BackHandler { activeAlbum = null }
+        AlbumDetailScreen(
+            album = activeAlbum!!,
+            onBack = { activeAlbum = null },
+            onOpen = { viewing = it },
+        )
         return
     }
 
@@ -146,42 +215,63 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             }
         },
     ) { contentPadding ->
-        Column(
-            Modifier.fillMaxSize().background(AuraTokens.Void).padding(contentPadding),
-        ) {
+        Box(Modifier.fillMaxSize().background(AuraTokens.Void).padding(contentPadding)) {
             when (destination) {
-                Destination.LIBRARY -> LibraryScreen(
+                Destination.PHOTOS -> LibraryScreen(
                     items = items,
                     access = access,
                     refreshing = refreshing,
                     error = error,
                     selectedUris = selected,
+                    filter = filter,
+                    onFilter = { filter = it },
+                    onOpenViewer = { viewing = it },
                     onToggleSelected = { item ->
-                        selected = if (item.contentUri in selected) selected - item.contentUri
-                        else selected + item.contentUri
+                        selected = if (item.contentUri in selected) selected - item.contentUri else selected + item.contentUri
                     },
-                    onOpenEditor = { editing = it; selected = emptySet() },
-                    onClearSelection = { selected = emptySet() },
-                    onShare = { shareMedia(context, it) },
-                    onKeep = { selectedItems ->
-                        selectedItems.filterNot { it.isFavorite }.forEach { viewModel.toggleFavorite(it.contentUri) }
+                    onShareSelected = { shareMedia(context, it); selected = emptySet() },
+                    onFavoriteSelected = {
+                        it.forEach { item -> if (!item.isFavorite) viewModel.toggleFavorite(item.contentUri) }
                         selected = emptySet()
                     },
-                    onChoosePhotos = choosePhotos,
+                    onDeleteSelected = { pendingTrashUris = it.map(MediaItem::contentUri) },
+                    onChooseMedia = chooseMedia,
                     onRequestAccess = requestAccess,
                     onDismissError = viewModel::clearError,
-                    filter = filter,
-                    onFilter = {
-                        if (it == LibraryFilter.PEOPLE) {
-                            destination = Destination.PEOPLE
-                            filter = LibraryFilter.ALL
-                        } else filter = it
-                    },
+                    onMore = { moreOpen = true },
+                )
+                Destination.ALBUMS -> AlbumsScreen(
+                    items = items,
+                    onOpenAlbum = { activeAlbum = it },
+                    onRecentlyDeleted = { showRecentlyDeleted = true },
+                    deletedCount = trashedItems.size,
+                    onMore = { moreOpen = true },
+                )
+                Destination.EXPLORE -> ExploreScreen(
+                    onPeople = { destination = Destination.PEOPLE },
+                    onAiSets = { destination = Destination.AI_SETS },
+                    onOptimize = { destination = Destination.OPTIMIZE },
+                    onSettings = { destination = Destination.SETTINGS },
                 )
                 Destination.PEOPLE -> PeopleScreen()
+                Destination.AI_SETS -> AiSetsScreen()
                 Destination.OPTIMIZE -> OptimizeScreen(items)
                 Destination.SETTINGS -> SettingsScreen(context, items)
             }
+        }
+    }
+
+    if (moreOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { moreOpen = false },
+            containerColor = AuraTokens.Surface1,
+            contentColor = AuraTokens.Paper,
+        ) {
+            Text("Aura", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), fontFamily = InstrumentSerif, fontSize = 25.sp)
+            SheetNavigationRow("Explore", "People and AI Sets", Icons.Outlined.Explore) { destination = Destination.EXPLORE; moreOpen = false }
+            SheetNavigationRow("Optimize", "Storage and duplicate analysis", Icons.Outlined.Tune) { destination = Destination.OPTIMIZE; moreOpen = false }
+            SheetNavigationRow("Settings", "Backup, privacy and app settings", Icons.Outlined.Settings) { destination = Destination.SETTINGS; moreOpen = false }
+            Spacer(Modifier.height(18.dp))
         }
     }
 }
@@ -193,273 +283,493 @@ private fun LibraryScreen(
     refreshing: Boolean,
     error: String?,
     selectedUris: Set<String>,
-    onToggleSelected: (MediaItem) -> Unit,
-    onOpenEditor: (MediaItem) -> Unit,
-    onClearSelection: () -> Unit,
-    onShare: (List<MediaItem>) -> Unit,
-    onKeep: (List<MediaItem>) -> Unit,
-    onChoosePhotos: () -> Unit,
-    onRequestAccess: () -> Unit,
-    onDismissError: () -> Unit,
     filter: LibraryFilter,
     onFilter: (LibraryFilter) -> Unit,
+    onOpenViewer: (MediaItem) -> Unit,
+    onToggleSelected: (MediaItem) -> Unit,
+    onShareSelected: (List<MediaItem>) -> Unit,
+    onFavoriteSelected: (List<MediaItem>) -> Unit,
+    onDeleteSelected: (List<MediaItem>) -> Unit,
+    onChooseMedia: () -> Unit,
+    onRequestAccess: () -> Unit,
+    onDismissError: () -> Unit,
+    onMore: () -> Unit,
 ) {
     var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    var newestFirst by remember { mutableStateOf(true) }
-    val sorted = remember(items, newestFirst) { if (newestFirst) items else items.reversed() }
-    val visible = remember(sorted, query) {
-        if (query.isBlank()) sorted else sorted.filter { it.displayName.orEmpty().contains(query, true) }
+    var filterMenuOpen by remember { mutableStateOf(false) }
+    val filtered = remember(items, query, filter) {
+        items.filter { item ->
+            val matchesQuery = query.isBlank() || item.displayName.orEmpty().contains(query, true) || item.bucketName.contains(query, true)
+            val matchesType = when (filter) {
+                LibraryFilter.ALL -> true
+                LibraryFilter.PHOTOS -> !item.isVideo
+                LibraryFilter.VIDEOS -> item.isVideo
+                LibraryFilter.FAVORITES -> item.isFavorite
+            }
+            matchesQuery && matchesType
+        }.sortedByDescending(MediaItem::dateTakenEpochMillis)
     }
-    val selectedItems = items.filter { it.contentUri in selectedUris }
-    val locale = LocalLocale.current.platformLocale
-
     Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 10.dp, top = 8.dp, bottom = 10.dp),
+            Modifier.fillMaxWidth().height(52.dp).padding(start = 18.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("Aura", color = AuraTokens.Paper, fontFamily = InstrumentSerif, fontSize = 32.sp, lineHeight = 36.sp)
-            Row {
-                IconButton(onClick = { searchOpen = !searchOpen }) {
-                    Icon(Icons.Outlined.Search, "Search photos", tint = AuraTokens.PaperMuted)
-                }
-                IconButton(onClick = { newestFirst = !newestFirst }) {
-                    Icon(Icons.AutoMirrored.Outlined.Sort, "Change photo order", tint = AuraTokens.PaperMuted)
+            Text("Aura", Modifier.weight(1f), color = AuraTokens.Paper, fontFamily = InstrumentSerif, fontSize = 27.sp, lineHeight = 32.sp)
+            IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) query = "" }) {
+                Icon(if (searchOpen) Icons.Outlined.Close else Icons.Outlined.Search, "Search media", tint = AuraTokens.PaperMuted)
+            }
+            Box {
+                IconButton(onClick = { filterMenuOpen = true }) { Icon(Icons.Outlined.FilterList, "Filter media", tint = AuraTokens.PaperMuted) }
+                DropdownMenu(expanded = filterMenuOpen, onDismissRequest = { filterMenuOpen = false }) {
+                    listOf(LibraryFilter.ALL to "All media", LibraryFilter.PHOTOS to "Photos", LibraryFilter.VIDEOS to "Videos", LibraryFilter.FAVORITES to "Favorites").forEach { (value, label) ->
+                        DropdownMenuItem(text = { Text(label) }, onClick = { onFilter(value); filterMenuOpen = false })
+                    }
                 }
             }
+            IconButton(onClick = onMore) { Icon(Icons.Outlined.MoreVert, "More options", tint = AuraTokens.PaperMuted) }
         }
         if (searchOpen) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 3.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Search filenames", color = AuraTokens.PaperFaint) },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = AuraTokens.Paper),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = AuraTokens.Surface1,
-                        unfocusedContainerColor = AuraTokens.Surface1,
-                        focusedIndicatorColor = AuraTokens.Safelight,
-                        unfocusedIndicatorColor = AuraTokens.Hairline,
-                        cursorColor = AuraTokens.Safelight,
-                    ),
-                )
-                IconButton(onClick = { searchOpen = false; query = "" }) {
-                    Icon(Icons.Outlined.Close, "Close search", tint = AuraTokens.PaperMuted)
-                }
-            }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                placeholder = { Text("Times, folders, file names…") },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = AuraTokens.Paper,
+                    unfocusedTextColor = AuraTokens.Paper,
+                    focusedBorderColor = AuraTokens.Safelight,
+                    unfocusedBorderColor = AuraTokens.Hairline,
+                    cursorColor = AuraTokens.Safelight,
+                ),
+            )
         }
-
-        Text(
-            NumberFormat.getIntegerInstance(locale).format(items.size) + " photographs",
-            Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp),
-            color = AuraTokens.Paper,
-            fontFamily = InstrumentSerif,
-            fontSize = 33.sp,
-            lineHeight = 38.sp,
-        )
-        Text(
-            when (access) {
-                MediaAccessLevel.FULL -> if (refreshing) "ON DEVICE · SCANNING LIBRARY" else "ON DEVICE · FULL LIBRARY ACCESS"
-                MediaAccessLevel.PARTIAL -> "ON DEVICE · SELECTED PHOTOS ONLY"
-                MediaAccessLevel.DENIED -> "ON DEVICE · LIBRARY ACCESS NOT GRANTED"
-            },
-            Modifier.padding(start = 20.dp, end = 20.dp, top = 7.dp, bottom = 15.dp),
-            color = AuraTokens.PaperFaint,
-            fontFamily = JetBrainsMono,
-            fontSize = 10.sp,
-            letterSpacing = 1.sp,
-        )
-        FilterRail(filter, onFilter)
-
         if (access == MediaAccessLevel.PARTIAL) {
             InfoRule(
-                title = "Showing selected photos",
-                message = "Aura can only see the photos you selected. Manage access at any time.",
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                title = "Limited media access",
+                message = "Aura can only show the photos and videos Android has allowed. You can manage access at any time.",
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                 action = "MANAGE ACCESS",
                 onAction = onRequestAccess,
             )
         }
-        if (error != null) {
-            ErrorRule(error, onDismissError, Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-        }
-
+        if (error != null) ErrorRule(error, onDismissError, Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
         when {
-            access == MediaAccessLevel.DENIED && items.isEmpty() -> FirstRunLibrary(onChoosePhotos, onRequestAccess)
-            filter == LibraryFilter.PLACES -> EmptyIndexState("Places", "Place grouping is not part of this build yet.")
-            filter == LibraryFilter.VIDEO -> EmptyIndexState("0 videos", "This build currently indexes device photos only.")
-            visible.isEmpty() && refreshing -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("SCANNING", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            access == MediaAccessLevel.DENIED && items.isEmpty() -> FirstRunLibrary(onChooseMedia, onRequestAccess)
+            filtered.isEmpty() && refreshing -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("SCANNING DEVICE LIBRARY", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
             }
-            visible.isEmpty() -> EmptyGallery(onChoosePhotos)
-            else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.weight(1f).fillMaxWidth().background(AuraTokens.Hairline),
-                contentPadding = PaddingValues(bottom = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(1.dp),
-                verticalArrangement = Arrangement.spacedBy(1.dp),
+            filtered.isEmpty() -> EmptyGallery(onChooseMedia)
+            else -> DateGroupedMediaGrid(
+                items = filtered,
+                selectedUris = selectedUris,
+                onOpen = onOpenViewer,
+                onToggleSelected = onToggleSelected,
+            )
+        }
+        if (selectedUris.isNotEmpty()) {
+            val selectedItems = items.filter { it.contentUri in selectedUris }
+            Row(
+                Modifier.fillMaxWidth().background(AuraTokens.Surface2).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                itemsIndexed(
-                    visible,
-                    key = { _, item -> item.contentUri },
-                    span = { index, _ -> if (index % 14 == 4) GridItemSpan(2) else GridItemSpan(1) },
-                ) { index, item ->
-                    val isSelected = item.contentUri in selectedUris
-                    ContactSheetTile(
-                        item = item,
-                        frameNumber = index + 1,
-                        totalCount = items.size,
-                        selected = isSelected,
-                        onClick = { if (isSelected) onOpenEditor(item) else onToggleSelected(item) },
-                        onLongClick = { onOpenEditor(item) },
-                    )
+                Text("${selectedItems.size} selected", color = AuraTokens.Paper, fontFamily = Manrope, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { onShareSelected(selectedItems) }) { Text("Share") }
+                    TextButton(onClick = { onFavoriteSelected(selectedItems) }) { Text("Favorite") }
+                    TextButton(onClick = { onDeleteSelected(selectedItems) }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                 }
             }
-        }
-
-        if (selectedItems.isNotEmpty()) {
-            SelectionActionBar(
-                selectedItems.size,
-                onShare = { onShare(selectedItems) },
-                onKeep = { onKeep(selectedItems) },
-                onClear = onClearSelection,
-            )
         }
     }
 }
 
 @Composable
-private fun FilterRail(selected: LibraryFilter, onSelect: (LibraryFilter) -> Unit) {
-    val entries = listOf(
-        LibraryFilter.ALL to "All",
-        LibraryFilter.PHOTOS to "Photos",
-        LibraryFilter.PEOPLE to "People",
-        LibraryFilter.PLACES to "Places",
-        LibraryFilter.VIDEO to "Video",
-    )
-    Row(
-        Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(23.dp),
-        verticalAlignment = Alignment.Top,
+private fun DateGroupedMediaGrid(
+    items: List<MediaItem>,
+    selectedUris: Set<String> = emptySet(),
+    onOpen: (MediaItem) -> Unit,
+    onToggleSelected: (MediaItem) -> Unit = {},
+) {
+    val groups = remember(items) {
+        items.sortedByDescending(MediaItem::dateTakenEpochMillis).groupBy { media ->
+            java.time.Instant.ofEpochMilli(media.dateTakenEpochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+        }
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        modifier = Modifier.fillMaxSize().background(AuraTokens.Hairline),
+        contentPadding = PaddingValues(bottom = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        entries.forEach { (filter, label) ->
-            Column(
-                Modifier.clickable { onSelect(filter) }.defaultMinSize(minHeight = 40.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    label,
-                    color = if (selected == filter) AuraTokens.Paper else AuraTokens.PaperFaint,
-                    fontFamily = Manrope,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
+        groups.forEach { (date, dayItems) ->
+            item(key = "date-${date}", span = { GridItemSpan(maxLineSpan) }) {
+                Row(
+                    Modifier.fillMaxWidth().background(AuraTokens.Void).padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(dateHeading(date), color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text(dayItems.size.toString(), color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                }
+            }
+            items(dayItems, key = { it.contentUri }) { item ->
+                MediaGridTile(
+                    item = item,
+                    selected = item.contentUri in selectedUris,
+                    onClick = { if (selectedUris.isNotEmpty()) onToggleSelected(item) else onOpen(item) },
+                    onLongClick = { onToggleSelected(item) },
                 )
-                if (selected == filter) Box(Modifier.fillMaxWidth().height(1.5.dp).background(AuraTokens.Safelight))
             }
         }
     }
-    Box(Modifier.fillMaxWidth().height(1.dp).background(AuraTokens.Hairline))
+}
+
+private fun dateHeading(date: java.time.LocalDate): String {
+    val today = java.time.LocalDate.now()
+    return when (date) {
+        today -> "Today"
+        today.minusDays(1) -> "Yesterday"
+        else -> date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault()))
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ContactSheetTile(
-    item: MediaItem,
-    frameNumber: Int,
-    totalCount: Int,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    val locale = LocalLocale.current.platformLocale
-    val pressedSource = remember { MutableInteractionSource() }
-    val pressed by pressedSource.collectIsPressedAsState()
-    val date = remember(item.dateTakenEpochMillis, locale) {
-        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
-            .withLocale(locale)
-            .format(Instant.ofEpochMilli(item.dateTakenEpochMillis).atZone(ZoneId.systemDefault()).toLocalDate())
-    }
+private fun MediaGridTile(item: MediaItem, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().aspectRatio(1f).background(AuraTokens.Surface1)
-            .drawBehind {
-                if (selected) drawRect(AuraTokens.Safelight, style = androidx.compose.ui.graphics.drawscope.Stroke(1.6.dp.toPx()))
-            }
-            .combinedClickable(
-                interactionSource = pressedSource,
-                indication = null,
-                onClick = onClick,
-                onLongClick = onLongClick,
-            )
-            .semantics {
-                contentDescription = "Photo " + frameNumber + " of " + totalCount + ", date " + date +
-                    (if (item.isFavorite) ", kept" else ", not kept") + ", double tap or long press to edit"
-            },
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .drawBehind { if (selected) drawRect(AuraTokens.Safelight, style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx())) },
     ) {
-        AsyncImage(
-            model = item.contentUri.toUri(),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-        )
-        Row(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                .background(Color(0x66000000)).padding(horizontal = 7.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                frameNumber.toString().padStart(4, '0'),
-                color = if (selected) AuraTokens.Safelight else AuraTokens.Paper.copy(alpha = 0.82f),
-                fontFamily = JetBrainsMono,
-                fontSize = 10.sp,
-                letterSpacing = 0.7.sp,
+        if (item.isVideo) {
+            VideoFrameThumbnail(item = item, modifier = Modifier.fillMaxSize())
+        } else {
+            AsyncImage(
+                model = item.contentUri.toUri(),
+                contentDescription = item.displayName ?: "Photo",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
             )
-            if (item.isFavorite) Icon(Icons.Outlined.Favorite, null, tint = AuraTokens.Paper, modifier = Modifier.size(12.dp))
         }
-        if (pressed) {
-            Box(Modifier.fillMaxSize().background(AuraTokens.Safelight.copy(alpha = 0.06f)))
+        if (item.isVideo) {
+            Row(
+                Modifier.align(Alignment.BottomStart).padding(5.dp).clip(RoundedCornerShape(5.dp))
+                    .background(Color(0xCC000000)).padding(horizontal = 6.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                Text(durationLabel(item.durationMillis), color = Color.White, fontFamily = JetBrainsMono, fontSize = 9.sp)
+            }
+        } else if (item.isFavorite) {
+            Icon(Icons.Outlined.Favorite, null, tint = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp).size(15.dp))
         }
         if (selected) {
-            Box(
-                Modifier.align(Alignment.TopEnd).padding(7.dp).size(14.dp).background(AuraTokens.Safelight, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("✓", color = AuraTokens.InkOnAmber, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp).background(AuraTokens.Safelight, CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Check, null, tint = AuraTokens.InkOnAmber, modifier = Modifier.size(14.dp))
             }
         }
     }
 }
 
 @Composable
-private fun SelectionActionBar(
-    count: Int,
-    onShare: () -> Unit,
-    onKeep: () -> Unit,
-    onClear: () -> Unit,
+private fun VideoFrameThumbnail(item: MediaItem, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = item.contentUri) {
+        value = withContext(Dispatchers.IO) { decodeVideoFrame(context, item.contentUri.toUri()) }
+    }
+    if (bitmap != null) {
+        Image(bitmap = bitmap!!.asImageBitmap(), contentDescription = item.displayName ?: "Video thumbnail", modifier = modifier, contentScale = ContentScale.Crop)
+    } else {
+        Box(modifier.background(AuraTokens.Surface2), contentAlignment = Alignment.Center) {
+            Icon(Icons.Outlined.Videocam, null, tint = AuraTokens.PaperFaint, modifier = Modifier.size(30.dp))
+        }
+    }
+}
+
+private fun decodeVideoFrame(context: Context, uri: Uri): Bitmap? {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        if (Build.VERSION.SDK_INT >= 27) {
+            retriever.getScaledFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 640, 640)
+        } else {
+            retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?.let { frame ->
+                    val scale = minOf(1f, 640f / maxOf(frame.width, frame.height))
+                    if (scale < 1f) Bitmap.createScaledBitmap(frame, (frame.width * scale).toInt().coerceAtLeast(1), (frame.height * scale).toInt().coerceAtLeast(1), true).also { frame.recycle() }
+                    else frame
+                }
+        }
+    } catch (_: Exception) {
+        null
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private fun durationLabel(durationMillis: Long): String {
+    val totalSeconds = (durationMillis / 1_000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0) String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    else String.format(Locale.US, "%02d:%02d", minutes, seconds)
+}
+
+@Composable
+private fun AlbumsScreen(
+    items: List<MediaItem>,
+    onOpenAlbum: (ai.sakana.aura.gallery.domain.grouping.MediaAlbum) -> Unit,
+    onRecentlyDeleted: () -> Unit,
+    deletedCount: Int,
+    onMore: () -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth().background(AuraTokens.Surface2).padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(count.toString() + " SELECTED", color = AuraTokens.Safelight, fontFamily = JetBrainsMono, fontSize = 10.sp, letterSpacing = 0.6.sp)
-            IconButton(onClick = onClear, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Outlined.Close, "Clear selection", tint = AuraTokens.PaperMuted, modifier = Modifier.size(17.dp))
+    val albums = remember(items) { ai.sakana.aura.gallery.domain.grouping.GalleryCollectionGrouping.buildAlbums(items) }
+    Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
+        Row(Modifier.fillMaxWidth().height(52.dp).padding(start = 18.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Albums", Modifier.weight(1f), color = AuraTokens.Paper, fontFamily = Manrope, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+            IconButton(onClick = onMore) { Icon(Icons.Outlined.MoreVert, "More options", tint = AuraTokens.PaperMuted) }
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(albums, key = { album -> (if (album.isVirtual) "virtual:" else "folder:") + (album.items.firstOrNull()?.relativePath?.ifBlank { album.title } ?: album.title) }) { album ->
+                Column(Modifier.clickable { onOpenAlbum(album) }) {
+                    Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(3.dp)).background(AuraTokens.Surface1)) {
+                        album.items.firstOrNull()?.let { cover ->
+                            AsyncImage(model = cover.contentUri.toUri(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        }
+                        if (album.title == "Videos") Icon(Icons.Outlined.PlayCircleOutline, null, tint = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp).size(22.dp))
+                    }
+                    Spacer(Modifier.height(5.dp))
+                    Text(album.title, color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${album.items.size} items", color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 10.sp)
+                }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            HairlineButton("Share", onShare)
-            AmberButton("Keep", onKeep, height = 40)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp).clip(RoundedCornerShape(14.dp)).background(AuraTokens.Surface1)) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onRecentlyDeleted).padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.DeleteOutline, null, tint = AuraTokens.PaperMuted)
+                Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                    Text("Recently deleted", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("$deletedCount items · recoverable in Aura", color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 10.sp)
+                }
+                Icon(Icons.Outlined.ChevronRight, null, tint = AuraTokens.PaperFaint)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumDetailScreen(album: ai.sakana.aura.gallery.domain.grouping.MediaAlbum, onBack: () -> Unit, onOpen: (MediaItem) -> Unit) {
+    Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
+        Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to albums", tint = AuraTokens.Paper) }
+            Column(Modifier.weight(1f)) {
+                Text(album.title, color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Text("${album.items.size} items", color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 10.sp)
+            }
+        }
+        if (album.items.isEmpty()) EmptyIndexState("No media yet", "Items saved into this folder will appear here.")
+        else DateGroupedMediaGrid(album.items, onOpen = onOpen)
+    }
+}
+
+@Composable
+private fun RecentlyDeletedScreen(items: List<MediaItem>, onBack: () -> Unit, onRestore: (String) -> Unit, onOpen: (MediaItem) -> Unit) {
+    Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
+        Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to albums", tint = AuraTokens.Paper) }
+            Text("Recently deleted", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+        }
+        InfoRule(
+            title = "Aura recovery area",
+            message = "These items are hidden from Aura’s main timeline. The original files remain in their device folders; restoring them makes them visible here again.",
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+        if (items.isEmpty()) {
+            EmptyIndexState("Nothing here", "Items you move out of the main Aura library will appear here.")
+        } else {
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize()) {
+                items(items, key = { it.contentUri }) { item ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(model = item.contentUri.toUri(), contentDescription = null, modifier = Modifier.size(72.dp).clip(RoundedCornerShape(6.dp)).clickable { onOpen(item) }, contentScale = ContentScale.Crop)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text(item.displayName ?: if (item.isVideo) "Video" else "Photo", color = AuraTokens.Paper, fontFamily = Manrope, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${item.bucketName} · ${Formatter.formatShortFileSize(LocalContext.current, item.sizeBytes)}", color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 10.sp)
+                        }
+                        TextButton(onClick = { onRestore(item.contentUri) }) { Text("Restore") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaViewerScreen(
+    item: MediaItem,
+    onBack: () -> Unit,
+    onShare: () -> Unit,
+    onFavorite: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val context = LocalContext.current
+    val locale = LocalLocale.current.platformLocale
+    var moreOpen by remember { mutableStateOf(false) }
+    var showDetails by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().background(Color.Black)) {
+        Row(
+            Modifier.fillMaxWidth().height(58.dp).background(Color(0xFF171717)).padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to gallery", tint = Color.White) }
+            Column(Modifier.weight(1f)) {
+                Text(dateHeading(java.time.Instant.ofEpochMilli(item.dateTakenEpochMillis).atZone(ZoneId.systemDefault()).toLocalDate()), color = Color.White, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                val timestamp = DateTimeFormatter.ofPattern("h:mm a", locale).withZone(ZoneId.systemDefault()).format(java.time.Instant.ofEpochMilli(item.dateTakenEpochMillis))
+                Text("$timestamp · ${if (item.isVideo) "Video" else "Photo"}", color = Color.LightGray, fontFamily = Manrope, fontSize = 10.sp)
+            }
+            IconButton(onClick = { showDetails = true }) { Icon(Icons.Outlined.Info, "Media details", tint = Color.White) }
+        }
+        Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black), contentAlignment = Alignment.Center) {
+            if (item.isVideo) {
+                key(item.contentUri) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { viewContext ->
+                            android.widget.VideoView(viewContext).apply {
+                                val controller = android.widget.MediaController(viewContext)
+                                controller.setAnchorView(this)
+                                setMediaController(controller)
+                                setVideoURI(item.contentUri.toUri())
+                                setOnPreparedListener { player -> player.isLooping = false; start() }
+                            }
+                        },
+                    )
+                }
+            } else {
+                AsyncImage(model = item.contentUri.toUri(), contentDescription = item.displayName ?: "Photo", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().height(76.dp).background(Color(0xFF1D1D1D)).padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            ViewerAction(Icons.Outlined.Share, "Share", onShare)
+            ViewerAction(if (item.isFavorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder, "Favorite", onFavorite)
+            ViewerAction(Icons.Outlined.Edit, "Edit", onEdit, enabled = !item.isVideo)
+            ViewerAction(Icons.Outlined.DeleteOutline, "Delete", onDelete)
+            Box {
+                ViewerAction(Icons.Outlined.MoreVert, "More", onClick = { moreOpen = true })
+                DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                    DropdownMenuItem(text = { Text("Details") }, onClick = { showDetails = true; moreOpen = false })
+                    DropdownMenuItem(text = { Text("Open in another app") }, onClick = {
+                        moreOpen = false
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(item.contentUri.toUri(), item.mimeType ?: if (item.isVideo) "video/*" else "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                        }
+                    })
+                }
+            }
+        }
+    }
+    if (showDetails) {
+        AlertDialog(
+            onDismissRequest = { showDetails = false },
+            title = { Text("Media details") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(item.displayName ?: "Untitled media")
+                    Text("Folder: ${item.bucketName}")
+                    Text("Type: ${item.mimeType ?: if (item.isVideo) "Video" else "Image"}")
+                    Text("Size: ${Formatter.formatShortFileSize(context, item.sizeBytes)}")
+                    if (item.width > 0 && item.height > 0) Text("Dimensions: ${item.width} × ${item.height}")
+                    if (item.isVideo) Text("Duration: ${durationLabel(item.durationMillis)}")
+                    Text("Stored on this device")
+                }
+            },
+            confirmButton = { TextButton(onClick = { showDetails = false }) { Text("Close") } },
+        )
+    }
+}
+
+@Composable
+private fun ViewerAction(icon: ImageVector, label: String, onClick: () -> Unit, enabled: Boolean = true) {
+    Column(
+        Modifier.width(64.dp).fillMaxHeight().clickable(enabled = enabled, onClick = onClick).padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, null, tint = Color.White.copy(alpha = if (enabled) 1f else 0.35f), modifier = Modifier.size(23.dp))
+        Spacer(Modifier.height(3.dp))
+        Text(label, color = Color.White.copy(alpha = if (enabled) 1f else 0.35f), fontFamily = Manrope, fontSize = 9.sp)
+    }
+}
+
+@Composable
+private fun ExploreScreen(onPeople: () -> Unit, onAiSets: () -> Unit, onOptimize: () -> Unit, onSettings: () -> Unit) {
+    Column(Modifier.fillMaxSize().background(AuraTokens.Void).verticalScroll(rememberScrollState())) {
+        PageHeader("Explore", "PEOPLE · AI SETS · TOOLS")
+        ExploreAction("People", "Group faces and manage identities on-device", Icons.Outlined.PeopleOutline, onPeople)
+        ExploreAction("AI Sets", "Find recurring scenes, outfits and visual setups", Icons.Outlined.AutoAwesome, {})
+        ExploreAction("Optimize", "Review storage usage and duplicate scans", Icons.Outlined.Tune, onOptimize)
+        ExploreAction("Settings", "Backup, permissions and privacy controls", Icons.Outlined.Settings, onSettings)
+        Text("AI Sets and face clustering are not active in this build yet.", Modifier.padding(horizontal = 20.dp, vertical = 16.dp), color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun AiSetsScreen() {
+    Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
+        PageHeader("AI Sets", "SCENE GROUPING · NOT YET ACTIVE")
+        InfoRule(
+            title = "AI Set analysis is not running",
+            message = "Aura will group recurring backgrounds, rooms, outfits and compositions independently from the people in each image. The on-device scene indexer is not implemented in this build.",
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun ExploreAction(title: String, description: String, icon: ImageVector, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp).clip(RoundedCornerShape(12.dp)).background(AuraTokens.Surface1)
+            .clickable(onClick = onClick).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = AuraTokens.Safelight, modifier = Modifier.size(24.dp))
+        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+            Text(title, color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(description, color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 10.sp, lineHeight = 15.sp)
+        }
+        Icon(Icons.Outlined.ChevronRight, null, tint = AuraTokens.PaperFaint)
+    }
+}
+
+@Composable
+private fun SheetNavigationRow(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = AuraTokens.PaperMuted)
+        Column(Modifier.padding(start = 14.dp)) {
+            Text(title, color = AuraTokens.Paper, fontFamily = Manrope, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 10.sp)
         }
     }
 }
@@ -471,14 +781,14 @@ private fun FirstRunLibrary(onChoosePhotos: () -> Unit, onAllowAccess: () -> Uni
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("0 photographs", color = AuraTokens.Paper, fontFamily = InstrumentSerif, fontSize = 34.sp)
+        Text("No media yet", color = AuraTokens.Paper, fontFamily = InstrumentSerif, fontSize = 34.sp)
         Spacer(Modifier.height(12.dp))
         Text(
             "Choose photos, or allow Aura to show your device library. You stay in control of what the app can see.",
             color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 14.sp, lineHeight = 22.sp,
         )
         Spacer(Modifier.height(24.dp))
-        AmberButton("PICK PHOTOS", onChoosePhotos)
+        AmberButton("PICK PHOTOS & VIDEOS", onChoosePhotos)
         TextButton(onClick = onAllowAccess) {
             Text("ALLOW LIBRARY ACCESS", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, letterSpacing = 1.sp)
         }
@@ -492,11 +802,11 @@ private fun EmptyGallery(onChoosePhotos: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("0 photographs", color = AuraTokens.Paper, fontFamily = InstrumentSerif, fontSize = 34.sp)
+        Text("No media yet", color = AuraTokens.Paper, fontFamily = InstrumentSerif, fontSize = 34.sp)
         Spacer(Modifier.height(12.dp))
         Text("Your library is empty.", color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 14.sp)
         Spacer(Modifier.height(18.dp))
-        AmberButton("PICK PHOTOS", onChoosePhotos)
+        AmberButton("PICK PHOTOS & VIDEOS", onChoosePhotos)
     }
 }
 
@@ -535,12 +845,13 @@ private fun PeopleScreen() {
 }
 
 @Composable
-private fun AuraEditorScreen(item: MediaItem, onBack: () -> Unit) {
+private fun AuraEditorScreen(item: MediaItem, onBack: () -> Unit, onSaveCopy: (ColorMatrix) -> Unit) {
     var brightness by remember(item.contentUri) { mutableFloatStateOf(0f) }
     var contrast by remember(item.contentUri) { mutableFloatStateOf(0f) }
     var saturation by remember(item.contentUri) { mutableFloatStateOf(0f) }
     var warmth by remember(item.contentUri) { mutableFloatStateOf(0f) }
     var compareOriginal by remember { mutableStateOf(false) }
+    var showAiEditInfo by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val matrix = remember(brightness, contrast, saturation, warmth) {
         AuraToneColorMatrix.create(brightness, contrast, saturation, warmth)
@@ -597,10 +908,20 @@ private fun AuraEditorScreen(item: MediaItem, onBack: () -> Unit) {
                     HoldCompareButton("Hold to compare", { compareOriginal = true }, { compareOriginal = false })
                 }
                 Box(Modifier.weight(1f)) {
-                    HairlineButton("Export · M2", {}, enabled = false, modifier = Modifier.fillMaxWidth())
+                    HairlineButton("Save copy", { onSaveCopy(matrix) }, modifier = Modifier.fillMaxWidth())
                 }
             }
+            Spacer(Modifier.height(6.dp))
+            HairlineButton("AI Edit", { showAiEditInfo = true }, modifier = Modifier.fillMaxWidth())
         }
+    }
+    if (showAiEditInfo) {
+        AlertDialog(
+            onDismissRequest = { showAiEditInfo = false },
+            title = { Text("AI Edit is not connected") },
+            text = { Text("The AI editing model and processing service have not been configured yet. This action does not upload your photo or change the original.") },
+            confirmButton = { TextButton(onClick = { showAiEditInfo = false }) { Text("OK") } },
+        )
     }
 }
 
@@ -707,15 +1028,15 @@ private fun OptimizeScreen(items: List<MediaItem>) {
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            MetricCard("Indexed device images") {
+            MetricCard("Indexed device media") {
                 Text(Formatter.formatShortFileSize(context, totalBytes), color = AuraTokens.Paper, fontFamily = InstrumentSerif, fontSize = 44.sp, lineHeight = 48.sp)
-                Text(items.size.toString() + " PHOTOS · CURRENTLY INDEXED", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                Text(items.size.toString() + " PHOTOS + VIDEOS · CURRENTLY INDEXED", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, letterSpacing = 0.5.sp)
                 Spacer(Modifier.height(13.dp))
                 Box(Modifier.fillMaxWidth().height(3.dp).background(AuraTokens.Surface3)) {
                     Box(Modifier.fillMaxWidth().height(3.dp).background(AuraTokens.PaperMuted))
                 }
                 Spacer(Modifier.height(6.dp))
-                Text("IMAGES ONLY · VIDEO AND OTHER FILES EXCLUDED", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                Text("DEVICE MEDIA INDEX · ORIGINAL FILES PRESERVED", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
             }
             MetricCard("Identical · SHA-256") {
                 Text("No duplicate report", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
@@ -746,20 +1067,54 @@ private fun SettingsScreen(context: Context, items: List<MediaItem>) {
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 6.dp),
         ) {
             SettingsGroup("BACKUP")
-            SettingsRow("Google Drive", "Provider connection is not available yet.", "NOT CONNECTED")
-            SettingsRow("Wi-Fi only", "Backup controls appear with cloud sync.", "PLANNED M3")
-            SettingsRow("Auto backup", "No background upload jobs are running.", "OFF")
+            SettingsRow("Google Drive", "No sign-in, upload or sync job is configured. Media remains on this device.", "NOT CONNECTED")
+            SettingsRow("Wi-Fi only", "Available after Google Drive backup is implemented.", "NOT SET UP")
+            SettingsRow("Auto backup", "No photos or videos are being uploaded to Drive.", "OFF")
 
             SettingsGroup("ON-DEVICE ANALYSIS")
             SettingsRow("Face grouping", "Face detection and licensed embeddings are not active.", "PLANNED M4")
             SettingsRow("Duplicate scan", "SHA-256 and dHash analysis has not run.", "PLANNED M2")
 
+            if (BuildConfig.DEBUG) {
+                SettingsGroup("DIAGNOSTICS")
+                InfoRule(
+                    title = "Export debug report",
+                    message = "Share app logs and basic device details as a text file. Nothing is sent until you choose a sharing destination.",
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    action = "SHARE REPORT",
+                    onAction = { shareDiagnosticReport(context) },
+                )
+            }
+
             SettingsGroup("STORAGE")
-            SettingsRow("Device library", items.size.toString() + " indexed images · " + Formatter.formatShortFileSize(context, bytes), "ON DEVICE")
+            SettingsRow("Device library", items.size.toString() + " indexed photos/videos · " + Formatter.formatShortFileSize(context, bytes), "ON DEVICE")
             SettingsRow("Database", "Local media index", Formatter.formatShortFileSize(context, databaseBytes))
-            SettingsRow("Export folder", "Edited copies will preserve the original.", "PLANNED M2")
+            SettingsRow("Export folder", "New edited JPEG copies are saved here.", "Pictures/Aura Edits")
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+
+private fun shareDiagnosticReport(context: Context) {
+    try {
+        val reportFile = DiagnosticReportExporter.create(context)
+        val reportUri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            reportFile,
+        )
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Aura AI Gallery diagnostic report")
+            putExtra(Intent.EXTRA_TEXT, "Review the attached diagnostic report before sharing.")
+            putExtra(Intent.EXTRA_STREAM, reportUri)
+            clipData = ClipData.newUri(context.contentResolver, "Aura diagnostic report", reportUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share diagnostic report"))
+    } catch (error: Exception) {
+        Timber.e(error, "Unable to create or share diagnostic report")
     }
 }
 
@@ -876,10 +1231,9 @@ private fun AuraBottomBar(selected: Destination, onSelect: (Destination) -> Unit
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NavItem("Library", selected == Destination.LIBRARY, Icons.Outlined.GridView) { onSelect(Destination.LIBRARY) }
-            NavItem("People", selected == Destination.PEOPLE, Icons.Outlined.PeopleOutline) { onSelect(Destination.PEOPLE) }
-            NavItem("Optimize", selected == Destination.OPTIMIZE, Icons.Outlined.Tune) { onSelect(Destination.OPTIMIZE) }
-            NavItem("Settings", selected == Destination.SETTINGS, Icons.Outlined.Settings) { onSelect(Destination.SETTINGS) }
+            NavItem("Photos", selected == Destination.PHOTOS, Icons.Outlined.GridView) { onSelect(Destination.PHOTOS) }
+            NavItem("Albums", selected == Destination.ALBUMS, Icons.Outlined.Folder) { onSelect(Destination.ALBUMS) }
+            NavItem("Explore", selected == Destination.EXPLORE || selected == Destination.PEOPLE || selected == Destination.AI_SETS || selected == Destination.OPTIMIZE || selected == Destination.SETTINGS, Icons.Outlined.Explore) { onSelect(Destination.EXPLORE) }
         }
     }
 }
@@ -905,12 +1259,24 @@ private fun readMediaAccess(context: Context): MediaAccessLevel {
 }
 
 private fun shareMedia(context: Context, items: List<MediaItem>) {
+    if (items.isEmpty()) return
     val uris = ArrayList<Uri>().apply { items.forEach { add(it.contentUri.toUri()) } }
-    if (uris.isEmpty()) return
+    val mimeTypes = items.map { it.mimeType?.takeIf(String::isNotBlank) ?: if (it.isVideo) "video/*" else "image/*" }.distinct()
+    val mimeType = when {
+        mimeTypes.size == 1 -> mimeTypes.first()
+        items.all(MediaItem::isVideo) -> "video/*"
+        items.all { !it.isVideo } -> "image/*"
+        else -> "*/*"
+    }
     val intent = if (uris.size == 1) {
-        Intent(Intent.ACTION_SEND).apply { type = "image/*"; putExtra(Intent.EXTRA_STREAM, uris.first()) }
+        Intent(Intent.ACTION_SEND).apply { type = mimeType; putExtra(Intent.EXTRA_STREAM, uris.first()) }
     } else {
-        Intent(Intent.ACTION_SEND_MULTIPLE).apply { type = "image/*"; putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris) }
-    }.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    runCatching { context.startActivity(Intent.createChooser(intent, "Share photos")) }
+        Intent(Intent.ACTION_SEND_MULTIPLE).apply { type = mimeType; putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris) }
+    }.apply {
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        clipData = ClipData.newUri(context.contentResolver, "Aura media", uris.first()).also { clip ->
+            uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+        }
+    }
+    runCatching { context.startActivity(Intent.createChooser(intent, "Share media")) }
 }

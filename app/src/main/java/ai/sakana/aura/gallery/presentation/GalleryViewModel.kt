@@ -7,6 +7,9 @@ import ai.sakana.aura.gallery.domain.usecase.ImportPickedMediaUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveMediaUseCase
 import ai.sakana.aura.gallery.domain.usecase.RefreshMediaStoreUseCase
 import ai.sakana.aura.gallery.domain.usecase.ToggleFavoriteUseCase
+import ai.sakana.aura.gallery.domain.usecase.ObserveTrashedMediaUseCase
+import ai.sakana.aura.gallery.domain.usecase.MoveToTrashUseCase
+import ai.sakana.aura.gallery.domain.usecase.RestoreFromTrashUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -24,7 +27,15 @@ class GalleryViewModel @Inject constructor(
     private val refreshMediaStore: RefreshMediaStoreUseCase,
     private val importPickedMedia: ImportPickedMediaUseCase,
     private val toggleFavorite: ToggleFavoriteUseCase,
+    observeTrashedMedia: ObserveTrashedMediaUseCase,
+    private val moveToTrash: MoveToTrashUseCase,
+    private val restoreFromTrash: RestoreFromTrashUseCase,
 ) : ViewModel() {
+    val trashedItems = observeTrashedMedia().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
     val mediaItems = observeMedia().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -43,7 +54,9 @@ class GalleryViewModel @Inject constructor(
             _isRefreshing.value = true
             _errorMessage.value = null
             try {
+                Timber.i("Gallery refresh started")
                 refreshMediaStore()
+                Timber.i("Gallery refresh completed")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -59,7 +72,9 @@ class GalleryViewModel @Inject constructor(
         if (uris.isEmpty()) return
         viewModelScope.launch {
             try {
+                Timber.i("Import of %d user-selected media items started", uris.size)
                 importPickedMedia(uris)
+                Timber.i("User-selected media import completed")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -73,11 +88,40 @@ class GalleryViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 toggleFavorite.invoke(contentUri)
+                Timber.i("Favourite state updated")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 Timber.e(error, "Unable to update favourite")
                 _errorMessage.value = "The favourite couldn't be saved. Please try again."
+            }
+        }
+    }
+
+    fun moveToTrash(contentUri: String) {
+        viewModelScope.launch {
+            try {
+                moveToTrash.invoke(contentUri)
+                Timber.i("Media item moved to Aura trash")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.e(error, "Unable to move media to Aura trash")
+                _errorMessage.value = "This item couldn't be moved to Recently Deleted."
+            }
+        }
+    }
+
+    fun restoreFromTrash(contentUri: String) {
+        viewModelScope.launch {
+            try {
+                restoreFromTrash.invoke(contentUri)
+                Timber.i("Media item restored from Aura trash")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.e(error, "Unable to restore media item")
+                _errorMessage.value = "This item couldn't be restored."
             }
         }
     }

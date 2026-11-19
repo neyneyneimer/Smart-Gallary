@@ -17,7 +17,9 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AuraGalleryDatabase =
-        Room.databaseBuilder(context, AuraGalleryDatabase::class.java, "aura_gallery.db").build()
+        Room.databaseBuilder(context, AuraGalleryDatabase::class.java, "aura_gallery.db")
+            .addMigrations(AuraGalleryDatabase.MIGRATION_1_2)
+            .build()
 
     @Provides
     fun provideMediaItemDao(database: AuraGalleryDatabase): MediaItemDao = database.mediaItemDao()

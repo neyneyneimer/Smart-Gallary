@@ -31,7 +31,7 @@ class RoomMediaRepository @Inject constructor(
         dao.observeAvailable().map { entities -> entities.map(MediaItemEntity::toDomain) }
 
     override suspend fun refreshMediaStore() = withContext(Dispatchers.IO) {
-        val scanned = mediaStore.readImages()
+        val scanned = mediaStore.readMedia()
         database.withTransaction {
             val existingByUri = dao.getAllSnapshot().associateBy(MediaItemEntity::contentUri)
             dao.markMediaStoreUnavailable()
@@ -41,6 +41,8 @@ class RoomMediaRepository @Inject constructor(
                     id = existing?.id ?: 0L,
                     isFavorite = existing?.isFavorite ?: false,
                     isAvailable = true,
+                    isTrashed = existing?.isTrashed ?: false,
+                    trashedAtEpochMillis = existing?.trashedAtEpochMillis ?: 0L,
                 )
             }
             if (updated.isNotEmpty()) dao.upsertAll(updated)
@@ -96,11 +98,26 @@ class RoomMediaRepository @Inject constructor(
             height = 0,
             sourceType = "PICKER",
             isAvailable = true,
+            mediaType = if (context.contentResolver.getType(uri).orEmpty().startsWith("video/")) "VIDEO" else "IMAGE",
+            bucketName = "Picked",
+            relativePath = "Picked",
+
         )
     }
 
     override suspend fun toggleFavorite(contentUri: String) {
         withContext(Dispatchers.IO) { dao.toggleFavorite(contentUri) }
+    }
+
+    override fun observeTrashedMedia(): Flow<List<MediaItem>> =
+        dao.observeTrashed().map { entities -> entities.map(MediaItemEntity::toDomain) }
+
+    override suspend fun moveToTrash(contentUri: String) {
+        withContext(Dispatchers.IO) { dao.moveToTrash(contentUri, System.currentTimeMillis()) }
+    }
+
+    override suspend fun restoreFromTrash(contentUri: String) {
+        withContext(Dispatchers.IO) { dao.restoreFromTrash(contentUri) }
     }
 }
 
@@ -114,4 +131,10 @@ private fun MediaItemEntity.toDomain() = MediaItem(
     width = width,
     height = height,
     isFavorite = isFavorite,
+    mediaType = mediaType,
+    bucketName = bucketName,
+    relativePath = relativePath,
+    durationMillis = durationMillis,
+    isTrashed = isTrashed,
+    trashedAtEpochMillis = trashedAtEpochMillis,
 )
