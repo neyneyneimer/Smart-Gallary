@@ -12,6 +12,7 @@ import androidx.room.PrimaryKey
         Index(value = ["dateTakenEpochMillis"]),
         Index(value = ["isFavorite", "isAvailable"]),
         Index(value = ["mediaType"]),
+        Index(value = ["sourceType", "mediaType"]),
     ],
 )
 data class MediaItemEntity(

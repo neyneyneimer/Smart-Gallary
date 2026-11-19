@@ -23,8 +23,8 @@ interface MediaItemDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertPicked(items: List<MediaItemEntity>)
 
-    @Query("UPDATE media_items SET isAvailable = 0 WHERE sourceType = 'MEDIA_STORE'")
-    suspend fun markMediaStoreUnavailable()
+    @Query("UPDATE media_items SET isAvailable = 0 WHERE sourceType = 'MEDIA_STORE' AND mediaType = :mediaType")
+    suspend fun markMediaStoreUnavailable(mediaType: String)
 
     @Query("UPDATE media_items SET isFavorite = CASE WHEN isFavorite = 1 THEN 0 ELSE 1 END WHERE contentUri = :contentUri")
     suspend fun toggleFavorite(contentUri: String)

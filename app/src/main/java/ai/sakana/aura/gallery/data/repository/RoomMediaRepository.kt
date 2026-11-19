@@ -10,6 +10,7 @@ import ai.sakana.aura.gallery.data.local.AuraGalleryDatabase
 import ai.sakana.aura.gallery.data.local.MediaItemDao
 import ai.sakana.aura.gallery.data.local.MediaItemEntity
 import ai.sakana.aura.gallery.data.mediastore.MediaStoreDataSource
+import ai.sakana.aura.gallery.data.mediastore.MediaStoreReconciliationPolicy
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.repository.MediaRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -31,11 +32,13 @@ class RoomMediaRepository @Inject constructor(
         dao.observeAvailable().map { entities -> entities.map(MediaItemEntity::toDomain) }
 
     override suspend fun refreshMediaStore() = withContext(Dispatchers.IO) {
-        val scanned = mediaStore.readMedia()
+        val plan = MediaStoreReconciliationPolicy.createPlan(mediaStore.readMedia())
         database.withTransaction {
             val existingByUri = dao.getAllSnapshot().associateBy(MediaItemEntity::contentUri)
-            dao.markMediaStoreUnavailable()
-            val updated = scanned.map { fresh ->
+            for (mediaType in plan.mediaTypesToReconcile) {
+                dao.markMediaStoreUnavailable(mediaType)
+            }
+            val updated = plan.itemsToUpsert.map { fresh ->
                 val existing = existingByUri[fresh.contentUri]
                 fresh.copy(
                     id = existing?.id ?: 0L,
