@@ -125,7 +125,15 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     )
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) access = readMediaAccess(context)
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val resumedAccess = readMediaAccess(context)
+                access = resumedAccess
+                if (resumedAccess != MediaAccessLevel.DENIED) {
+                    // Refresh the catalogue after returning from another app or a permission prompt.
+                    // GalleryViewModel coalesces overlapping requests.
+                    viewModel.refresh()
+                }
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
