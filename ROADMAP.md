@@ -19,7 +19,7 @@
 
 ## M2 — On-device recognition and AI Sets
 
-**Status: In progress — scene-similarity suggestions and face-location detection are implemented; identity grouping and user-managed sets remain incomplete.**
+**Status: In progress — on-device scene suggestions, face-location detection and persistent user-confirmed AI Sets are implemented; model validation and person identity grouping remain incomplete.**
 
 - [x] Bundle a pinned MediaPipe Image Embedder MobileNet V3 Small float32 model at build time; verify the downloaded model SHA-256 before packaging.
 - [x] Run scene feature extraction entirely on-device; no image, video, embedding or face data is uploaded.
@@ -30,6 +30,9 @@
 - [x] Reuse cached embeddings only when both model version and source fingerprint match; include MediaStore modified time in the fingerprint.
 - [x] Cluster compatible vectors with cosine similarity, LSH candidate search and deterministic union-find grouping; regression test a 300-item candidate bucket.
 - [x] Connect People and AI Sets screens to real scan results and show honest progress/failure states.
+- [x] Save a reviewed scene suggestion as a persistent, user-named AI Set.
+- [x] Persist AI Set memberships independently of scene embeddings; add Room v4→v5 migration.
+- [x] Support manual AI Set rename, merge, delete and removal of individual members (split/correction).
 - [ ] Evaluate scene-similarity precision/recall against a labelled on-device set of recurring rooms, outfits, backgrounds and compositions; tune the threshold before treating suggestions as final AI Sets.
 - [ ] Add user-confirmed AI Sets with persistent names and manual merge, split, rename and membership editing.
 - [ ] Select and license a face-identity embedding model; ML Kit detection alone must never be represented as person recognition.
@@ -163,6 +166,7 @@
 | Date | Change |
 |---|---|
 | 2026-11-19 | M2 recognition foundation: checksum-pinned local MobileNet V3 Image Embedder, sampled video-frame scene vectors, separate ML Kit face-location detections, Room v4 persistence/migrations, similarity suggestions in People/AI Sets screens, and deterministic LSH clustering tests. Scene suggestions and face detection are not the same as validated scene sets or person identity. |
+| 2026-11-19 | M2 user-managed AI Sets: Room v5 saved sets and membership records; save reviewed suggestions, rename, merge, delete, and remove individual media members. Domain regression tests cover name validation, duplicate membership, merge ordering and split behavior. Scene-precision evaluation and face identity embeddings remain open. |
 | 2026-11-19 | Established v2.1 milestone order; created legacy reference branch; added project plan. |
 | 2026-11-19 | Applied the uploaded Aura UI design system to Compose, bundled Instrument Serif/Manrope/JetBrains Mono with OFL licences, added all five destinations and a non-destructive tone preview. Unimplemented M2–M4 data is clearly labelled rather than shown as mock metrics. |
 | 2026-11-19 | Created android/rebuild-m1; added launcher app, MediaStore/Photo Picker repository, Room favourites, permission-aware Compose grid, schema v1, six permission tests and Android CI workflow. Local debug/release/check/unit-test build passed on JDK 21. Device/API and JDK 17 CI gates remain pending. |

@@ -6,8 +6,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class],
-    version = 4,
+    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class, AiSetEntity::class, AiSetMembershipEntity::class],
+    version = 5,
     exportSchema = true,
 )
 abstract class AuraGalleryDatabase : RoomDatabase() {
@@ -45,6 +45,19 @@ abstract class AuraGalleryDatabase : RoomDatabase() {
         val MIGRATION_3_4: Migration = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE media_items ADD COLUMN dateModifiedEpochMillis INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS ai_sets (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `createdAtEpochMillis` INTEGER NOT NULL, `updatedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_sets_updatedAtEpochMillis ON ai_sets(updatedAtEpochMillis)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS ai_set_memberships (`setId` TEXT NOT NULL, `contentUri` TEXT NOT NULL, `addedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`setId`, `contentUri`), FOREIGN KEY(`setId`) REFERENCES `ai_sets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_set_memberships_contentUri ON ai_set_memberships(contentUri)")
             }
         }
     }

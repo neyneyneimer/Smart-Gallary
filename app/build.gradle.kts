@@ -81,7 +81,7 @@ android {
         versionName = "0.1.0"
 
         ndk {
-            abiFilters += setOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

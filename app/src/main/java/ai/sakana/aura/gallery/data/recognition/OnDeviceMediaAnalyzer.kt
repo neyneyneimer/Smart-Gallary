@@ -15,6 +15,7 @@ import ai.sakana.aura.gallery.domain.recognition.SCENE_EMBEDDING_MODEL_VERSION
 import com.google.android.gms.tasks.Tasks
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.imageembedder.ImageEmbedder
 import com.google.mlkit.vision.common.InputImage
@@ -36,7 +37,12 @@ class OnDeviceMediaAnalyzer @Inject constructor(
     private val inferenceLock = Any()
     private val embedder: ImageEmbedder by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         val options = ImageEmbedder.ImageEmbedderOptions.builder()
-            .setBaseOptions(BaseOptions.builder().setModelAssetPath("mobilenet_v3_small.tflite").build())
+            .setBaseOptions(
+                BaseOptions.builder()
+                    .setModelAssetPath("mobilenet_v3_small.tflite")
+                    .setDelegate(Delegate.CPU)
+                    .build(),
+            )
             .setRunningMode(RunningMode.IMAGE)
             .setL2Normalize(true)
             .setQuantize(false)
@@ -97,9 +103,14 @@ class OnDeviceMediaAnalyzer @Inject constructor(
     private fun readImage(contentUri: String): Bitmap {
         val uri = Uri.parse(contentUri)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: throw IOException("The selected photo is no longer readable.")
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("The photo dimensions could not be read.")
+        val boundsStream = context.contentResolver.openInputStream(uri)
+            ?: throw IOException("The selected photo is no longer readable: $uri")
+        boundsStream.use { input ->
+            // Bounds-only decoding intentionally returns null; the stream itself is the success condition.
+            BitmapFactory.decodeStream(input, null, bounds)
+            Unit
+        }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("The photo dimensions could not be read: $uri")
         val sampleSize = calculateSampleSize(bounds.outWidth, bounds.outHeight)
         val orientation = runCatching {
             context.contentResolver.openInputStream(uri)?.use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) }

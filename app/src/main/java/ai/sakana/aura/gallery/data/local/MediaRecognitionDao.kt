@@ -35,4 +35,32 @@ interface MediaRecognitionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFaces(faces: List<DetectedFaceEntity>)
 
+
+    @Query("SELECT ai_sets.id AS setId, ai_sets.name AS name, ai_sets.createdAtEpochMillis AS createdAtEpochMillis, ai_sets.updatedAtEpochMillis AS updatedAtEpochMillis, ai_set_memberships.contentUri AS contentUri FROM ai_sets LEFT JOIN ai_set_memberships ON ai_sets.id = ai_set_memberships.setId ORDER BY ai_sets.updatedAtEpochMillis DESC, ai_sets.id, ai_set_memberships.contentUri")
+    fun observeAiSetMembers(): Flow<List<AiSetMemberRow>>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAiSet(set: AiSetEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAiSetMembers(members: List<AiSetMembershipEntity>)
+
+    @Query("UPDATE ai_sets SET name = :name, updatedAtEpochMillis = :updatedAt WHERE id = :setId")
+    suspend fun renameAiSet(setId: String, name: String, updatedAt: Long): Int
+
+    @Query("DELETE FROM ai_set_memberships WHERE setId = :setId AND contentUri = :contentUri")
+    suspend fun removeAiSetMember(setId: String, contentUri: String): Int
+
+    @Query("INSERT OR IGNORE INTO ai_set_memberships (setId, contentUri, addedAtEpochMillis) SELECT :targetSetId, contentUri, :addedAt FROM ai_set_memberships WHERE setId = :sourceSetId")
+    suspend fun copyAiSetMembers(sourceSetId: String, targetSetId: String, addedAt: Long)
+
+    @Query("DELETE FROM ai_sets WHERE id = :setId")
+    suspend fun deleteAiSet(setId: String): Int
+
+    @Query("SELECT COUNT(*) FROM ai_sets WHERE id = :setId")
+    suspend fun countAiSet(setId: String): Int
+
+    @Query("UPDATE ai_sets SET updatedAtEpochMillis = :updatedAt WHERE id = :setId")
+    suspend fun touchAiSet(setId: String, updatedAt: Long): Int
+
 }

@@ -14,6 +14,13 @@ import ai.sakana.aura.gallery.domain.usecase.RestoreFromTrashUseCase
 import ai.sakana.aura.gallery.domain.usecase.AnalyzeMediaLibraryUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveSceneClustersUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveDetectedFacesUseCase
+import ai.sakana.aura.gallery.domain.recognition.AiSet
+import ai.sakana.aura.gallery.domain.usecase.ObserveAiSetsUseCase
+import ai.sakana.aura.gallery.domain.usecase.SaveAiSetUseCase
+import ai.sakana.aura.gallery.domain.usecase.RenameAiSetUseCase
+import ai.sakana.aura.gallery.domain.usecase.MergeAiSetsUseCase
+import ai.sakana.aura.gallery.domain.usecase.RemoveMediaFromAiSetUseCase
+import ai.sakana.aura.gallery.domain.usecase.DeleteAiSetUseCase
 import ai.sakana.aura.gallery.domain.recognition.SceneCluster
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -39,8 +46,19 @@ class GalleryViewModel @Inject constructor(
     private val analyzeMediaLibrary: AnalyzeMediaLibraryUseCase,
     observeSceneClusters: ObserveSceneClustersUseCase,
     observeDetectedFaces: ObserveDetectedFacesUseCase,
+    observeAiSets: ObserveAiSetsUseCase,
+    private val saveAiSet: SaveAiSetUseCase,
+    private val renameAiSet: RenameAiSetUseCase,
+    private val mergeAiSets: MergeAiSetsUseCase,
+    private val removeMediaFromAiSet: RemoveMediaFromAiSetUseCase,
+    private val deleteAiSet: DeleteAiSetUseCase,
 ) : ViewModel() {
     val sceneClusters: StateFlow<List<SceneCluster>> = observeSceneClusters().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+    val aiSets: StateFlow<List<AiSet>> = observeAiSets().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
@@ -174,6 +192,40 @@ class GalleryViewModel @Inject constructor(
             } catch (error: Exception) {
                 Timber.e(error, "On-device media analysis failed")
                 _recognitionProgress.value = _recognitionProgress.value.copy(isRunning = false, error = "Analysis stopped. Check media access and try again.")
+            }
+        }
+    }
+
+    fun saveAiSet(name: String, mediaUris: List<String>) = launchAiSetOperation("save AI Set") {
+        saveAiSet.invoke(name, mediaUris)
+    }
+
+    fun renameAiSet(setId: String, name: String) = launchAiSetOperation("rename AI Set") {
+        renameAiSet.invoke(setId, name)
+    }
+
+    fun mergeAiSets(targetSetId: String, sourceSetId: String) = launchAiSetOperation("merge AI Sets") {
+        mergeAiSets.invoke(targetSetId, sourceSetId)
+    }
+
+    fun removeMediaFromAiSet(setId: String, contentUri: String) = launchAiSetOperation("remove AI Set member") {
+        removeMediaFromAiSet.invoke(setId, contentUri)
+    }
+
+    fun deleteAiSet(setId: String) = launchAiSetOperation("delete AI Set") {
+        deleteAiSet.invoke(setId)
+    }
+
+    private fun launchAiSetOperation(label: String, operation: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                operation()
+                Timber.i("AI Set operation completed: %s", label)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.w(error, "AI Set operation failed: %s", label)
+                _errorMessage.value = error.message ?: "The AI Set couldn't be updated."
             }
         }
     }

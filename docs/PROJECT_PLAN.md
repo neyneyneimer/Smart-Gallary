@@ -99,7 +99,7 @@ Never assume that a permission grant means the app can see the entire library. N
 - The MobileNet V3 family is trained on ImageNet. Current vectors are broad visual similarity features, so generated clusters are unconfirmed suggestions—not proof of the same room, outfit, composition or AI Set. A labelled target-gallery evaluation and likely a stronger scene-specific model are still required.
 - Videos are sampled at 18%, 50% and 82% of duration. The frame vectors are averaged/normalized; face boxes retain their sampled timestamps.
 - ML Kit Face Detection stores normalized face boxes only. It does not recognize people. A licensed face-identity model, aligned face crops, embeddings and measured clustering are required before People identities or couples can be claimed.
-- Scene vectors and face detections are stored independently in Room schema v4. The source fingerprint includes model version, URI, size, capture date, modified date, dimensions, MIME type and duration.
+- Scene vectors and face detections are stored independently in Room schema v4; user-confirmed AI Sets and memberships are added in schema v5. The source fingerprint includes model version, URI, size, capture date, modified date, dimensions, MIME type and duration.
 - Android runtime/device acceptance is still outstanding. The available Android host had no free device slots during this implementation.
 
 ## 6. Milestones and release gates

@@ -77,6 +77,8 @@ import ai.sakana.aura.gallery.design.InstrumentSerif
 import ai.sakana.aura.gallery.design.JetBrainsMono
 import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
+import ai.sakana.aura.gallery.domain.recognition.AiSet
+import ai.sakana.aura.gallery.domain.recognition.AiSetRules
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
 import ai.sakana.aura.gallery.domain.recognition.SceneCluster
 import ai.sakana.aura.gallery.platform.MediaAccessLevel
@@ -100,6 +102,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     val refreshing by viewModel.isRefreshing.collectAsState()
     val error by viewModel.errorMessage.collectAsState()
     val sceneClusters by viewModel.sceneClusters.collectAsState()
+    val savedAiSets by viewModel.aiSets.collectAsState()
     val detectedFaces by viewModel.detectedFaces.collectAsState()
     val recognitionProgress by viewModel.recognitionProgress.collectAsState()
     var destination by remember { mutableStateOf(Destination.PHOTOS) }
@@ -267,8 +270,16 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                 Destination.AI_SETS -> AiSetsScreen(
                     items = items,
                     clusters = sceneClusters,
+                    savedAiSets = savedAiSets,
                     progress = recognitionProgress,
+                    error = error,
                     onAnalyze = { viewModel.analyzeLibrary(items) },
+                    onSaveAiSet = viewModel::saveAiSet,
+                    onRenameAiSet = viewModel::renameAiSet,
+                    onMergeAiSets = viewModel::mergeAiSets,
+                    onRemoveMember = viewModel::removeMediaFromAiSet,
+                    onDeleteAiSet = viewModel::deleteAiSet,
+                    onDismissError = viewModel::clearError,
                 )
                 Destination.OPTIMIZE -> OptimizeScreen(items)
                 Destination.SETTINGS -> SettingsScreen(context, items)
@@ -747,14 +758,25 @@ private fun ExploreScreen(onPeople: () -> Unit, onAiSets: () -> Unit, onOptimize
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AiSetsScreen(
     items: List<MediaItem>,
     clusters: List<SceneCluster>,
+    savedAiSets: List<AiSet>,
     progress: RecognitionProgress,
+    error: String?,
     onAnalyze: () -> Unit,
+    onSaveAiSet: (String, List<String>) -> Unit,
+    onRenameAiSet: (String, String) -> Unit,
+    onMergeAiSets: (String, String) -> Unit,
+    onRemoveMember: (String, String) -> Unit,
+    onDeleteAiSet: (String) -> Unit,
+    onDismissError: () -> Unit,
 ) {
     val mediaByUri = remember(items) { items.associateBy(MediaItem::contentUri) }
+    var pendingSaveUris by remember { mutableStateOf<List<String>?>(null) }
+    var newSetName by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
         PageHeader("AI Sets", "ON-DEVICE SCENE SIMILARITY")
         Column(
@@ -763,13 +785,15 @@ private fun AiSetsScreen(
         ) {
             InfoRule(
                 title = "Scene similarity suggestions",
-                message = "These are unconfirmed suggestions, not saved AI Sets yet. The current MobileNet V3 feature model was trained on ImageNet, so it provides broad visual similarity rather than a validated room/outfit/composition matcher. Review results before relying on them.",
+                message = "Suggestions use broad visual features and are not guaranteed to describe the same room, outfit or composition. Save only the groups you confirm. Person identity is analyzed separately and is not used to create these scene suggestions.",
                 modifier = Modifier,
             )
+            if (error != null) ErrorRule(error, onDismissError)
+
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("${clusters.size} suggested sets", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    Text("${clusters.sumOf { it.mediaUris.size }} grouped items", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    Text("${savedAiSets.size} saved AI Sets", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text("${savedAiSets.sumOf { it.mediaUris.size }} memberships", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
                 }
                 AmberButton(
                     if (progress.isRunning) "ANALYZING" else if (progress.total > 0) "RESCAN" else "ANALYZE LIBRARY",
@@ -778,6 +802,22 @@ private fun AiSetsScreen(
                     height = 42,
                 )
             }
+
+            if (savedAiSets.isNotEmpty()) {
+                Text("CONFIRMED SETS", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp, letterSpacing = 1.sp)
+                savedAiSets.forEach { set ->
+                    SavedAiSetCard(
+                        set = set,
+                        mediaByUri = mediaByUri,
+                        otherSets = savedAiSets.filterNot { it.id == set.id },
+                        onRename = { name -> onRenameAiSet(set.id, name) },
+                        onMerge = { targetSetId -> onMergeAiSets(targetSetId, set.id) },
+                        onRemoveMember = { uri -> onRemoveMember(set.id, uri) },
+                        onDelete = { onDeleteAiSet(set.id) },
+                    )
+                }
+            }
+
             if (progress.isRunning || progress.total > 0) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AuraTokens.Surface1).padding(12.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -798,6 +838,8 @@ private fun AiSetsScreen(
                     progress.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
                 }
             }
+
+            Text("SUGGESTIONS TO REVIEW", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp, letterSpacing = 1.sp)
             if (clusters.isEmpty()) {
                 EmptyIndexState(
                     if (progress.total > 0 && !progress.isRunning) "No matching scene groups yet" else "AI Sets are ready to analyze",
@@ -807,9 +849,13 @@ private fun AiSetsScreen(
             } else {
                 clusters.forEachIndexed { index, cluster ->
                     SceneClusterCard(
-                        title = "Suggested Set ${ (index + 1).toString().padStart(2, '0') }",
+                        title = "Suggested Set ${(index + 1).toString().padStart(2, '0')}",
                         cluster = cluster,
                         mediaByUri = mediaByUri,
+                        onSave = {
+                            pendingSaveUris = cluster.mediaUris
+                            newSetName = "AI Set ${(savedAiSets.size + index + 1).toString().padStart(2, '0')}"
+                        },
                     )
                 }
             }
@@ -823,6 +869,136 @@ private fun AiSetsScreen(
             )
         }
     }
+
+    if (pendingSaveUris != null) {
+        AlertDialog(
+            onDismissRequest = { pendingSaveUris = null },
+            title = { Text("Save confirmed AI Set") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Give this group a name. The selected media will be linked to a saved set; the original files will not be moved or changed.")
+                    OutlinedTextField(
+                        value = newSetName,
+                        onValueChange = { newSetName = it.take(AiSetRules.MAX_NAME_LENGTH) },
+                        label = { Text("AI Set name") },
+                        singleLine = true,
+                    )
+                    Text("${pendingSaveUris.orEmpty().distinct().size} different media items", color = AuraTokens.PaperMuted, fontSize = 11.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = newSetName.isNotBlank() && pendingSaveUris.orEmpty().distinct().size >= 2,
+                    onClick = {
+                        onSaveAiSet(newSetName, pendingSaveUris.orEmpty())
+                        pendingSaveUris = null
+                    },
+                ) { Text("Save AI Set") }
+            },
+            dismissButton = { TextButton(onClick = { pendingSaveUris = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun SavedAiSetCard(
+    set: AiSet,
+    mediaByUri: Map<String, MediaItem>,
+    otherSets: List<AiSet>,
+    onRename: (String) -> Unit,
+    onMerge: (String) -> Unit,
+    onRemoveMember: (String) -> Unit,
+    onDelete: () -> Unit,
+) {
+    var expanded by remember(set.id) { mutableStateOf(false) }
+    var menuOpen by remember(set.id) { mutableStateOf(false) }
+    var mergeMenuOpen by remember(set.id) { mutableStateOf(false) }
+    var renameOpen by remember(set.id) { mutableStateOf(false) }
+    var deleteOpen by remember(set.id) { mutableStateOf(false) }
+    var renameValue by remember(set.id, set.name) { mutableStateOf(set.name) }
+
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AuraTokens.Surface1).padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(set.name, color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text("${set.mediaUris.size} items · user confirmed", color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 10.sp)
+            }
+            Box {
+                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, "AI Set actions", tint = AuraTokens.PaperMuted) }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text(if (expanded) "Hide members" else "Manage members") }, onClick = { expanded = !expanded; menuOpen = false })
+                    DropdownMenuItem(text = { Text("Rename") }, onClick = { renameValue = set.name; renameOpen = true; menuOpen = false })
+                    if (otherSets.isNotEmpty()) {
+                        DropdownMenuItem(text = { Text("Merge into another set") }, onClick = { mergeMenuOpen = true; menuOpen = false })
+                    }
+                    DropdownMenuItem(text = { Text("Delete AI Set") }, onClick = { deleteOpen = true; menuOpen = false })
+                }
+                DropdownMenu(expanded = mergeMenuOpen, onDismissRequest = { mergeMenuOpen = false }) {
+                    otherSets.forEach { target ->
+                        DropdownMenuItem(
+                            text = { Text(target.name) },
+                            onClick = { onMerge(target.id); mergeMenuOpen = false },
+                        )
+                    }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            set.mediaUris.take(5).forEach { uri ->
+                val media = mediaByUri[uri]
+                if (media != null) {
+                    Box(Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(AuraTokens.Surface2)) {
+                        if (media.isVideo) VideoFrameThumbnail(media, Modifier.fillMaxSize())
+                        else AsyncImage(model = uri.toUri(), contentDescription = media.displayName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    }
+                }
+            }
+        }
+        if (expanded) {
+            Spacer(Modifier.height(10.dp))
+            Text("REMOVE AN ITEM TO SPLIT IT OUT OF THIS SET", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 8.sp, letterSpacing = 0.5.sp)
+            set.mediaUris.forEach { uri ->
+                val media = mediaByUri[uri]
+                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (media != null) {
+                        AsyncImage(model = uri.toUri(), contentDescription = media.displayName, modifier = Modifier.size(44.dp).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
+                    } else {
+                        Box(Modifier.size(44.dp).background(AuraTokens.Surface2), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.ImageNotSupported, null, tint = AuraTokens.PaperFaint) }
+                    }
+                    Text(media?.displayName ?: "Unavailable media item", Modifier.weight(1f).padding(horizontal = 9.dp), color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    IconButton(onClick = { onRemoveMember(uri) }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Outlined.Close, "Remove from AI Set", tint = AuraTokens.PaperMuted, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    if (renameOpen) {
+        AlertDialog(
+            onDismissRequest = { renameOpen = false },
+            title = { Text("Rename AI Set") },
+            text = {
+                OutlinedTextField(
+                    value = renameValue,
+                    onValueChange = { renameValue = it.take(AiSetRules.MAX_NAME_LENGTH) },
+                    singleLine = true,
+                    label = { Text("Name") },
+                )
+            },
+            confirmButton = { TextButton(enabled = renameValue.isNotBlank(), onClick = { onRename(renameValue); renameOpen = false }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { renameOpen = false }) { Text("Cancel") } },
+        )
+    }
+    if (deleteOpen) {
+        AlertDialog(
+            onDismissRequest = { deleteOpen = false },
+            title = { Text("Delete this AI Set?") },
+            text = { Text("Only the grouping and its name will be deleted. Your photos and videos will stay where they are.") },
+            confirmButton = { TextButton(onClick = { onDelete(); deleteOpen = false }) { Text("Delete set") } },
+            dismissButton = { TextButton(onClick = { deleteOpen = false }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
@@ -830,6 +1006,7 @@ private fun SceneClusterCard(
     title: String,
     cluster: SceneCluster,
     mediaByUri: Map<String, MediaItem>,
+    onSave: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AuraTokens.Surface1).padding(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -852,7 +1029,10 @@ private fun SceneClusterCard(
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text("Scene-similarity candidate · review before treating as one set", color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 9.sp)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Unconfirmed scene suggestion", Modifier.weight(1f), color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 9.sp)
+            TextButton(onClick = onSave, enabled = cluster.mediaUris.distinct().size >= 2) { Text("SAVE AS AI SET") }
+        }
     }
 }
 
