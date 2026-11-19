@@ -122,6 +122,13 @@ kapt {
     }
 }
 
+// Room KAPT exports one shared schema file for all Android variants. Keep the
+// release processor after debug so parallel Gradle execution cannot read the
+// schema while the other variant is replacing it.
+tasks.matching { it.name == "kaptReleaseKotlin" }.configureEach {
+    mustRunAfter("kaptDebugKotlin")
+}
+
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.runtime)
