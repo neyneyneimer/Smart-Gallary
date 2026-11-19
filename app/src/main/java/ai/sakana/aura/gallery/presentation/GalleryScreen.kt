@@ -268,7 +268,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     onMore = { moreOpen = true },
                     )
                 }
-                Destination.ALBUMS -> ScreenErrorBoundary(screenName = "Albums", onRetry = viewModel::refresh) {
+                Destination.ALBUMS -> ScreenErrorBoundary(screenName = "Albums", errorMessage = error, onRetry = viewModel::refresh) {
                     AlbumsScreen(
                     items = items,
                     onOpenAlbum = { activeAlbum = it },
@@ -277,7 +277,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     onMore = { moreOpen = true },
                     )
                 }
-                Destination.EXPLORE -> ScreenErrorBoundary(screenName = "Explore", onRetry = viewModel::refresh) {
+                Destination.EXPLORE -> ScreenErrorBoundary(screenName = "Explore", errorMessage = error, onRetry = viewModel::refresh) {
                     ExploreScreen(
                     onPeople = { destination = Destination.PEOPLE },
                     onAiSets = { destination = Destination.AI_SETS },
@@ -285,7 +285,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     onSettings = { destination = Destination.SETTINGS },
                     )
                 }
-                Destination.PEOPLE -> ScreenErrorBoundary(screenName = "People", onRetry = viewModel::refresh) {
+                Destination.PEOPLE -> ScreenErrorBoundary(screenName = "People", errorMessage = recognitionProgress.error ?: error, onRetry = viewModel::refresh) {
                     PeopleScreen(
                     items = items,
                     faces = detectedFaces,
@@ -310,10 +310,10 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     onDismissError = viewModel::clearError,
                     )
                 }
-                Destination.OPTIMIZE -> ScreenErrorBoundary(screenName = "Optimize", onRetry = viewModel::refresh) {
+                Destination.OPTIMIZE -> ScreenErrorBoundary(screenName = "Optimize", errorMessage = error, onRetry = viewModel::refresh) {
                     OptimizeScreen(items)
                 }
-                Destination.SETTINGS -> ScreenErrorBoundary(screenName = "Settings", onRetry = viewModel::refresh) {
+                Destination.SETTINGS -> ScreenErrorBoundary(screenName = "Settings", errorMessage = error, onRetry = viewModel::refresh) {
                     SettingsScreen(context, items)
                 }
             }

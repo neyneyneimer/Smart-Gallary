@@ -22,7 +22,7 @@
 | `presentation/SettingsScreen.kt` | Extract Settings and show Drive/MEGA/TeraBox as unavailable with disabled toggles. | No cloud provider integration touched. |
 | `presentation/FavouritesScreen.kt` | Add a reusable dedicated favourites surface based on existing favorite state. | Existing Library filter remains the current navigation path. |
 | `presentation/FeatureFlags.kt` | Default-off flags for cloud backup, MEGA, TeraBox and video frame analysis. | Presentation gates only. |
-| `presentation/ScreenErrorBoundary.kt` | Add synchronous composable-screen fallback. | Does not claim to catch deferred layout/draw or process failures. |
+| `presentation/ScreenErrorBoundary.kt` | Add a Compose-compatible fallback driven by ViewModel/caller error state. | Compose compiler does not support try/catch around composable calls; this is not an automatic composition exception catcher. |
 | `presentation/GalleryViewModel.kt` | Preserve refresh coalescer; add SQLiteException diagnostics and scan timing/item-count metrics. | Account 2 AI Set APIs remain unchanged; this is a shared ViewModel. |
 | `diagnostics/CrashReporter.kt` | Add no-op crash reporter integration seam. | No crash data upload. |
 | `diagnostics/PerformanceMetrics.kt` | Log cold start, scan duration, heap, scroll frame timing and peak scroll heap. | Local-only; device measurements pending. |
