@@ -4,13 +4,13 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.provider.OpenableColumns
 import androidx.room.withTransaction
 import ai.sakana.aura.gallery.data.local.AuraGalleryDatabase
 import ai.sakana.aura.gallery.data.local.MediaItemDao
 import ai.sakana.aura.gallery.data.local.MediaItemEntity
 import ai.sakana.aura.gallery.data.mediastore.MediaStoreDataSource
 import ai.sakana.aura.gallery.data.mediastore.MediaStoreReconciliationPolicy
+import ai.sakana.aura.gallery.data.picker.PickerMediaMetadataReader
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.repository.MediaRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,6 +27,7 @@ class RoomMediaRepository @Inject constructor(
     private val database: AuraGalleryDatabase,
     private val dao: MediaItemDao,
     private val mediaStore: MediaStoreDataSource,
+    private val pickerMetadataReader: PickerMediaMetadataReader,
 ) : MediaRepository {
     override fun observeMedia(): Flow<List<MediaItem>> =
         dao.observeAvailable().map { entities -> entities.map(MediaItemEntity::toDomain) }
@@ -71,40 +72,25 @@ class RoomMediaRepository @Inject constructor(
         } catch (_: UnsupportedOperationException) {
             // Not all picker providers support persistable grants.
         }
-        var name: String? = null
-        var size = 0L
-        context.contentResolver.query(
-            uri,
-            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
-            null,
-            null,
-            null,
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                if (nameIndex >= 0) name = cursor.getString(nameIndex)
-                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
-                    size = cursor.getLong(sizeIndex).coerceAtLeast(0L)
-                }
-            }
-        }
+        val metadata = pickerMetadataReader.read(uri)
+        val mediaType = if (metadata.mimeType.orEmpty().startsWith("video/")) "VIDEO" else "IMAGE"
         return MediaItemEntity(
             volumeName = "picker",
             mediaStoreId = null,
             contentUri = uri.toString(),
-            displayName = name,
-            mimeType = context.contentResolver.getType(uri),
-            sizeBytes = size,
-            dateTakenEpochMillis = System.currentTimeMillis(),
-            width = 0,
-            height = 0,
+            displayName = metadata.displayName,
+            mimeType = metadata.mimeType,
+            sizeBytes = metadata.sizeBytes,
+            dateTakenEpochMillis = metadata.dateTakenEpochMillis,
+            width = metadata.width,
+            height = metadata.height,
             sourceType = "PICKER",
             isAvailable = true,
-            mediaType = if (context.contentResolver.getType(uri).orEmpty().startsWith("video/")) "VIDEO" else "IMAGE",
-            bucketName = "Picked",
-            relativePath = "Picked",
-
+            mediaType = mediaType,
+            bucketName = metadata.bucketName,
+            relativePath = metadata.relativePath,
+            durationMillis = metadata.durationMillis,
+            dateModifiedEpochMillis = metadata.dateModifiedEpochMillis,
         )
     }
 
