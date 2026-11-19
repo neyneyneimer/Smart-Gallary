@@ -1,6 +1,8 @@
 package ai.sakana.aura.gallery.presentation
 
 import android.net.Uri
+import android.database.sqlite.SQLiteException
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ai.sakana.aura.gallery.domain.model.MediaItem
@@ -36,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import ai.sakana.aura.gallery.diagnostics.PerformanceMetrics
 
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
@@ -100,6 +103,7 @@ class GalleryViewModel @Inject constructor(
 
     private val refreshRequestCoalescer = RefreshRequestCoalescer()
     private var refreshJob: Job? = null
+    private var hasCompletedMediaStoreScan = false
 
     fun refresh() {
         if (refreshJob?.isActive == true) {
@@ -115,14 +119,24 @@ class GalleryViewModel @Inject constructor(
                 do {
                     _errorMessage.value = null
                     try {
+                        val metric = if (hasCompletedMediaStoreScan) "incremental_media_store_refresh" else "first_media_store_scan"
+                        val itemCountBefore = mediaItems.value.size
+                        val scanStartedAt = SystemClock.elapsedRealtime()
                         Timber.i("Gallery refresh started")
                         refreshMediaStore()
+                        val itemCountAfter = mediaItems.value.size
+                        PerformanceMetrics.recordMediaStoreScan(
+                            metric = metric,
+                            durationMs = (SystemClock.elapsedRealtime() - scanStartedAt).coerceAtLeast(0L),
+                            itemCountBefore = itemCountBefore,
+                            itemCountAfter = itemCountAfter,
+                        )
+                        hasCompletedMediaStoreScan = true
                         Timber.i("Gallery refresh completed")
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
-                        Timber.e(error, "Unable to refresh device gallery")
-                        _errorMessage.value = "Aura couldn't refresh your gallery. Check access and try again."
+                        reportGalleryFailure("refresh device gallery", error, "Aura couldn't refresh your gallery. Check access and try again.")
                     }
                 } while (refreshRequestCoalescer.consumeQueuedPass())
             } finally {
@@ -142,8 +156,7 @@ class GalleryViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Timber.e(error, "Unable to import selected photos")
-                _errorMessage.value = "Some selected photos couldn't be added. Please try again."
+                reportGalleryFailure("import selected media", error, "Some selected photos couldn't be added. Please try again.")
             }
         }
     }
@@ -156,8 +169,7 @@ class GalleryViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Timber.e(error, "Unable to update favourite")
-                _errorMessage.value = "The favourite couldn't be saved. Please try again."
+                reportGalleryFailure("update favourite", error, "The favourite couldn't be saved. Please try again.")
             }
         }
     }
@@ -170,8 +182,7 @@ class GalleryViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Timber.e(error, "Unable to move media to Aura trash")
-                _errorMessage.value = "This item couldn't be moved to Recently Deleted."
+                reportGalleryFailure("move media to Aura trash", error, "This item couldn't be moved to Recently Deleted.")
             }
         }
     }
@@ -184,8 +195,7 @@ class GalleryViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Timber.e(error, "Unable to restore media item")
-                _errorMessage.value = "This item couldn't be restored."
+                reportGalleryFailure("restore media from Aura trash", error, "This item couldn't be restored.")
             }
         }
     }
@@ -252,6 +262,15 @@ class GalleryViewModel @Inject constructor(
                 _errorMessage.value = error.message ?: "The AI Set couldn't be updated."
             }
         }
+    }
+
+    private fun reportGalleryFailure(operation: String, error: Exception, message: String) {
+        if (error is SQLiteException) {
+            Timber.e(error, "Room database operation failed: %s", operation)
+        } else {
+            Timber.e(error, "Gallery operation failed: %s", operation)
+        }
+        _errorMessage.value = message
     }
 
     fun clearError() {

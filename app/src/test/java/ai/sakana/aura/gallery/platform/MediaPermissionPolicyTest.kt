@@ -57,6 +57,46 @@ class MediaPermissionPolicyTest {
     }
 
     @Test
+    fun `api 36 requests selected media permission`() {
+        assertEquals(
+            listOf(
+                "android.permission.READ_MEDIA_IMAGES",
+                "android.permission.READ_MEDIA_VIDEO",
+                "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+            ),
+            MediaPermissionPolicy.requiredPermissions(36),
+        )
+    }
+
+    @Test
+    fun `broad full media grants take precedence over selected media grant`() {
+        assertEquals(
+            MediaAccessLevel.FULL,
+            MediaPermissionPolicy.resolveAccess(
+                36,
+                setOf(
+                    "android.permission.READ_MEDIA_IMAGES",
+                    "android.permission.READ_MEDIA_VIDEO",
+                    "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `api 34 downgrade from full to one broad media permission is partial`() {
+        assertEquals(
+            MediaAccessLevel.PARTIAL,
+            MediaPermissionPolicy.resolveAccess(34, setOf("android.permission.READ_MEDIA_IMAGES")),
+        )
+    }
+
+    @Test
+    fun `revoking all media grants returns denied`() {
+        assertEquals(MediaAccessLevel.DENIED, MediaPermissionPolicy.resolveAccess(34, emptySet()))
+    }
+
+    @Test
     fun `no grant is denied`() {
         assertEquals(MediaAccessLevel.DENIED, MediaPermissionPolicy.resolveAccess(36, emptySet()))
     }
