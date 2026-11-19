@@ -14,8 +14,8 @@ interface MediaItemDao {
     @Query("SELECT * FROM media_items WHERE isAvailable = 1 AND isTrashed = 1 ORDER BY trashedAtEpochMillis DESC, id DESC")
     fun observeTrashed(): Flow<List<MediaItemEntity>>
 
-    @Query("SELECT * FROM media_items")
-    suspend fun getAllSnapshot(): List<MediaItemEntity>
+    @Query("SELECT id, contentUri, isFavorite, isTrashed, trashedAtEpochMillis FROM media_items")
+    suspend fun getRefreshStateSnapshot(): List<MediaItemRefreshState>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(items: List<MediaItemEntity>)

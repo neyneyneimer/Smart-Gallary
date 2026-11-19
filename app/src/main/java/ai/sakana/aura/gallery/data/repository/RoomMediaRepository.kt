@@ -8,6 +8,7 @@ import androidx.room.withTransaction
 import ai.sakana.aura.gallery.data.local.AuraGalleryDatabase
 import ai.sakana.aura.gallery.data.local.MediaItemDao
 import ai.sakana.aura.gallery.data.local.MediaItemEntity
+import ai.sakana.aura.gallery.data.local.MediaItemRefreshState
 import ai.sakana.aura.gallery.data.mediastore.MediaStoreDataSource
 import ai.sakana.aura.gallery.data.mediastore.MediaStoreReconciliationPolicy
 import ai.sakana.aura.gallery.data.picker.PickerMediaMetadataReader
@@ -35,7 +36,7 @@ class RoomMediaRepository @Inject constructor(
     override suspend fun refreshMediaStore() = withContext(Dispatchers.IO) {
         val plan = MediaStoreReconciliationPolicy.createPlan(mediaStore.readMedia())
         database.withTransaction {
-            val existingByUri = dao.getAllSnapshot().associateBy(MediaItemEntity::contentUri)
+            val existingByUri = dao.getRefreshStateSnapshot().associateBy(MediaItemRefreshState::contentUri)
             for (mediaType in plan.mediaTypesToReconcile) {
                 dao.markMediaStoreUnavailable(mediaType)
             }
