@@ -28,6 +28,7 @@ import ai.sakana.aura.gallery.domain.recognition.PersonCluster
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -97,22 +98,36 @@ class GalleryViewModel @Inject constructor(
     private val _recognitionProgress = MutableStateFlow(RecognitionProgress())
     val recognitionProgress: StateFlow<RecognitionProgress> = _recognitionProgress.asStateFlow()
 
+    private val refreshRequestCoalescer = RefreshRequestCoalescer()
+    private var refreshJob: Job? = null
+
     fun refresh() {
-        if (_isRefreshing.value) return
-        viewModelScope.launch {
+        if (refreshJob?.isActive == true) {
+            refreshRequestCoalescer.requestAnotherPass()
+            Timber.d("Gallery refresh queued until the active scan finishes")
+            return
+        }
+
+        refreshRequestCoalescer.reset()
+        refreshJob = viewModelScope.launch {
             _isRefreshing.value = true
-            _errorMessage.value = null
             try {
-                Timber.i("Gallery refresh started")
-                refreshMediaStore()
-                Timber.i("Gallery refresh completed")
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Timber.e(error, "Unable to refresh device gallery")
-                _errorMessage.value = "Aura couldn't refresh your gallery. Check access and try again."
+                do {
+                    _errorMessage.value = null
+                    try {
+                        Timber.i("Gallery refresh started")
+                        refreshMediaStore()
+                        Timber.i("Gallery refresh completed")
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Timber.e(error, "Unable to refresh device gallery")
+                        _errorMessage.value = "Aura couldn't refresh your gallery. Check access and try again."
+                    }
+                } while (refreshRequestCoalescer.consumeQueuedPass())
             } finally {
                 _isRefreshing.value = false
+                refreshJob = null
             }
         }
     }
@@ -253,3 +268,21 @@ data class RecognitionProgress(
     val isRunning: Boolean = false,
     val error: String? = null,
 )
+
+/** Coalesces any number of overlapping refresh requests into one follow-up scan. */
+internal class RefreshRequestCoalescer {
+    private var queued = false
+
+    @Synchronized
+    fun requestAnotherPass() {
+        queued = true
+    }
+
+    @Synchronized
+    fun consumeQueuedPass(): Boolean = queued.also { queued = false }
+
+    @Synchronized
+    fun reset() {
+        queued = false
+    }
+}
