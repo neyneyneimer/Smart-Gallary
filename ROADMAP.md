@@ -161,6 +161,21 @@
 - Coil 3.3.0 requires Kotlin 2.2 metadata and failed against Kotlin 2.0.21. Coil 3.0.4 is pinned to retain the v2.1 Kotlin baseline.
 - The available sandbox host runs JDK 21, not the JDK 17 CI target. No Android emulator or attached device is available in this build environment. The app builds locally, but M0/M1 runtime acceptance is not complete until GitHub Actions runs under JDK 17 and API 33/34/36 device tests are performed.
 
+## M1 — Performance Benchmarks
+
+The app logs local Timber events prefixed with `PERF metric=`. These are measurement points, not evidence that a target has passed.
+
+| Measure | Acceptance target | Instrumentation | Verified result |
+|---|---:|---|---|
+| Cold start to first visible gallery content | under 2 seconds | Process start to first non-empty Library composition | Not measured on a device |
+| First MediaStore scan (1,000 items) | under 5 seconds | `first_media_store_scan` duration | Not measured on a device |
+| Incremental refresh (10 new items) | under 500 ms | `incremental_media_store_refresh` duration and item-count delta | Not measured on a device |
+| Scroll frame timing | at least 95% of sampled frames within 16 ms | Choreographer intervals during Library grid scroll | Not measured on a device |
+| Heap at rest | under 128 MB | Runtime heap after first gallery content and scan | Not measured on a device |
+| Peak heap during scroll | under 256 MB | Runtime heap samples while Library grid scrolls | Not measured on a device |
+
+Collect measurements with `adb logcat | grep "PERF metric="`. API 33/34/36 runtime permission acceptance and the 1,000+ item benchmark still require physical devices or representative emulators; no measurements are inferred from CI.
+
 ## Change log
 
 | Date | Change |

@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
@@ -230,7 +231,7 @@ internal fun LibraryScreen(
             modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }
-}}
+}
 
 @Composable
 internal fun DateGroupedMediaGrid(
@@ -332,7 +333,7 @@ internal fun DateGroupedMediaGrid(
         }
     }
     }
-}}
+}
 
 internal fun dateHeading(date: java.time.LocalDate): String {
     val today = java.time.LocalDate.now()

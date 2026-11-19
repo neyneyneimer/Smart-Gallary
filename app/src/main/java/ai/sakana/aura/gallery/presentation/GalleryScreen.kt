@@ -169,7 +169,8 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
 
     if (editing != null) {
         BackHandler { editing = null }
-        AuraEditorScreen(
+        ScreenErrorBoundary(screenName = "Editor", onRetry = { editing = null }) {
+            AuraEditorScreen(
             item = editing!!,
             onBack = { editing = null },
             onSaveCopy = { matrix ->
@@ -183,13 +184,15 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                         android.widget.Toast.makeText(context, error.message ?: "Couldn't save edited copy", android.widget.Toast.LENGTH_LONG).show()
                     }
             },
-        )
+            )
+        }
         return
     }
 
     if (viewing != null) {
         BackHandler { viewing = null }
-        MediaViewerScreen(
+        ScreenErrorBoundary(screenName = "Media viewer", onRetry = { viewing = null }) {
+            MediaViewerScreen(
             item = items.firstOrNull { it.contentUri == viewing!!.contentUri }
                 ?: trashedItems.firstOrNull { it.contentUri == viewing!!.contentUri }
                 ?: viewing!!,
@@ -198,28 +201,33 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             onFavorite = { viewModel.toggleFavorite(viewing!!.contentUri) },
             onEdit = { editing = viewing },
             onDelete = { pendingTrashUris = listOf(viewing!!.contentUri) },
-        )
+            )
+        }
         return
     }
 
     if (showRecentlyDeleted) {
         BackHandler { showRecentlyDeleted = false }
-        RecentlyDeletedScreen(
+        ScreenErrorBoundary(screenName = "Recently deleted", onRetry = { showRecentlyDeleted = false }) {
+            RecentlyDeletedScreen(
             items = trashedItems,
             onBack = { showRecentlyDeleted = false },
             onRestore = viewModel::restoreFromTrash,
             onOpen = { viewing = it },
-        )
+            )
+        }
         return
     }
 
     if (activeAlbum != null) {
         BackHandler { activeAlbum = null }
-        AlbumDetailScreen(
+        ScreenErrorBoundary(screenName = "Album detail", onRetry = { activeAlbum = null }) {
+            AlbumDetailScreen(
             album = activeAlbum!!,
             onBack = { activeAlbum = null },
             onOpen = { viewing = it },
-        )
+            )
+        }
         return
     }
 
@@ -234,13 +242,15 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     ) { contentPadding ->
         Box(Modifier.fillMaxSize().background(AuraTokens.Void).padding(contentPadding)) {
             when (destination) {
-                Destination.PHOTOS -> LibraryScreen(
+                Destination.PHOTOS -> ScreenErrorBoundary(screenName = "Library", onRetry = viewModel::refresh) {
+                    LibraryScreen(
                     items = items,
                     access = access,
                     refreshing = refreshing,
                     error = error,
                     selectedUris = selected,
                     filter = filter,
+                    onRefresh = viewModel::refresh,
                     onFilter = { filter = it },
                     onOpenViewer = { viewing = it },
                     onToggleSelected = { item ->
@@ -256,28 +266,36 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     onRequestAccess = requestAccess,
                     onDismissError = viewModel::clearError,
                     onMore = { moreOpen = true },
-                )
-                Destination.ALBUMS -> AlbumsScreen(
+                    )
+                }
+                Destination.ALBUMS -> ScreenErrorBoundary(screenName = "Albums", onRetry = viewModel::refresh) {
+                    AlbumsScreen(
                     items = items,
                     onOpenAlbum = { activeAlbum = it },
                     onRecentlyDeleted = { showRecentlyDeleted = true },
                     deletedCount = trashedItems.size,
                     onMore = { moreOpen = true },
-                )
-                Destination.EXPLORE -> ExploreScreen(
+                    )
+                }
+                Destination.EXPLORE -> ScreenErrorBoundary(screenName = "Explore", onRetry = viewModel::refresh) {
+                    ExploreScreen(
                     onPeople = { destination = Destination.PEOPLE },
                     onAiSets = { destination = Destination.AI_SETS },
                     onOptimize = { destination = Destination.OPTIMIZE },
                     onSettings = { destination = Destination.SETTINGS },
-                )
-                Destination.PEOPLE -> PeopleScreen(
+                    )
+                }
+                Destination.PEOPLE -> ScreenErrorBoundary(screenName = "People", onRetry = viewModel::refresh) {
+                    PeopleScreen(
                     items = items,
                     faces = detectedFaces,
                     clusters = personClusters,
                     progress = recognitionProgress,
                     onAnalyze = { viewModel.analyzeLibrary(items) },
-                )
-                Destination.AI_SETS -> AiSetsScreen(
+                    )
+                }
+                Destination.AI_SETS -> ScreenErrorBoundary(screenName = "AI Sets", onRetry = viewModel::refresh) {
+                    AiSetsScreen(
                     items = items,
                     clusters = sceneClusters,
                     savedAiSets = savedAiSets,
@@ -290,9 +308,14 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     onRemoveMember = viewModel::removeMediaFromAiSet,
                     onDeleteAiSet = viewModel::deleteAiSet,
                     onDismissError = viewModel::clearError,
-                )
-                Destination.OPTIMIZE -> OptimizeScreen(items)
-                Destination.SETTINGS -> SettingsScreen(context, items)
+                    )
+                }
+                Destination.OPTIMIZE -> ScreenErrorBoundary(screenName = "Optimize", onRetry = viewModel::refresh) {
+                    OptimizeScreen(items)
+                }
+                Destination.SETTINGS -> ScreenErrorBoundary(screenName = "Settings", onRetry = viewModel::refresh) {
+                    SettingsScreen(context, items)
+                }
             }
         }
     }
