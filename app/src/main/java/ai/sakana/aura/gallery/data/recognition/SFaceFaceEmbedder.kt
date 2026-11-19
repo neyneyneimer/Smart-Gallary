@@ -36,7 +36,7 @@ class SFaceFaceEmbedder @Inject constructor(
         }
     }
 
-    fun embed(bitmap: Bitmap, landmarks: FaceLandmarks): FloatArray? {
+    internal fun embed(bitmap: Bitmap, landmarks: FaceLandmarks): FloatArray? {
         val aligned = SFaceFaceAligner.align(bitmap, landmarks) ?: return null
         return try {
             synchronized(inferenceLock) { runModel(aligned) }
@@ -68,7 +68,7 @@ class SFaceFaceEmbedder @Inject constructor(
             FloatBuffer.wrap(inputValues),
             longArrayOf(1, 3, width.toLong(), width.toLong()),
         )
-        tensor.use { input ->
+        return tensor.use { input ->
             activeSession.run(mapOf(inputName to input)).use { result ->
                 val output = result.get(0) as? OnnxTensor
                     ?: error("SFace model did not return a tensor.")
@@ -79,7 +79,7 @@ class SFaceFaceEmbedder @Inject constructor(
 
     private fun flatten(value: Any?): FloatArray = when (value) {
         is FloatArray -> value
-        is Array<*> -> value.flatMap { flatten(it) }.toFloatArray()
+        is Array<*> -> value.flatMap { flatten(it).asList() }.toFloatArray()
         else -> error("Unsupported SFace output type: ${value?.javaClass?.name ?: "null"}")
     }
 
