@@ -100,7 +100,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var access by remember { mutableStateOf(readMediaAccess(context)) }
-    var hasRequestedMediaPermission by rememberSaveable { mutableStateOf(false) }
+    var mediaPermissionRequestCount by rememberSaveable { mutableIntStateOf(0) }
     var permissionPermanentlyDenied by rememberSaveable { mutableStateOf(false) }
     val items by viewModel.mediaItems.collectAsState()
     val trashedItems by viewModel.trashedItems.collectAsState()
@@ -136,7 +136,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             }.toSet()
             permissionPermanentlyDenied = access == MediaAccessLevel.DENIED &&
                 MediaPermissionPolicy.shouldOpenAppSettings(
-                    hasRequestedBefore = hasRequestedMediaPermission && activity != null,
+                    hasRequestedBefore = mediaPermissionRequestCount > 1 && activity != null,
                     deniedPermissions = denied,
                     permissionsWithRationale = permissionsWithRationale,
                 )
@@ -172,7 +172,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             }
             context.startActivity(settingsIntent)
         } else {
-            hasRequestedMediaPermission = true
+            mediaPermissionRequestCount += 1
             permissionRequest.launch(MediaPermissionPolicy.requiredPermissions(Build.VERSION.SDK_INT).toTypedArray())
         }
     }
