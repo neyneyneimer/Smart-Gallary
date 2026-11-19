@@ -176,6 +176,8 @@ The app logs local Timber events prefixed with `PERF metric=`. These are measure
 
 Collect measurements with `adb logcat | grep "PERF metric="`. API 33/34/36 runtime permission acceptance and the 1,000+ item benchmark still require physical devices or representative emulators; no measurements are inferred from CI.
 
+- 2026-11-20: Account 1 hardening follow-up — repository Room operations now report SQLiteException to a shared safe UI error state; media observation errors no longer crash the collector; repeated permission denial routes to Android app settings; fatal crashes persist a minimal marker and show a generic recovery dialog on next launch. Unit coverage added for safe error messaging and permission denial routing. Runtime device matrix and measured 1,000+ item performance remain pending.
+
 ## Change log
 
 | Date | Change |

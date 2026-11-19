@@ -8,6 +8,7 @@ import coil3.SingletonImageLoader
 import coil3.request.crossfade
 import dagger.hilt.android.HiltAndroidApp
 import ai.sakana.aura.gallery.diagnostics.DiagnosticFileTree
+import ai.sakana.aura.gallery.diagnostics.CrashRecoveryStore
 import ai.sakana.aura.gallery.diagnostics.NoOpCrashReporter
 import ai.sakana.aura.gallery.diagnostics.PerformanceMetrics
 import java.io.File
@@ -31,6 +32,8 @@ class AuraGalleryApplication : Application(), SingletonImageLoader.Factory {
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Timber.e(throwable, "Uncaught exception on thread %s", thread.name)
             NoOpCrashReporter.recordUncaughtException(thread, throwable)
+            runCatching { CrashRecoveryStore(this).markFatalCrash() }
+                .onFailure { Timber.e(it, "Unable to persist crash recovery marker") }
             if (previousHandler != null) {
                 previousHandler.uncaughtException(thread, throwable)
             } else {

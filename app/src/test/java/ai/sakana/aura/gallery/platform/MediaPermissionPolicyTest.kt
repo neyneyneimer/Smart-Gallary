@@ -97,6 +97,42 @@ class MediaPermissionPolicyTest {
     }
 
     @Test
+    fun `first permission denial does not route directly to settings`() {
+        assertEquals(
+            false,
+            MediaPermissionPolicy.shouldOpenAppSettings(
+                hasRequestedBefore = false,
+                deniedPermissions = setOf(MediaPermissionPolicy.READ_MEDIA_IMAGES),
+                permissionsWithRationale = emptySet(),
+            ),
+        )
+    }
+
+    @Test
+    fun `denial with rationale allows another permission request`() {
+        assertEquals(
+            false,
+            MediaPermissionPolicy.shouldOpenAppSettings(
+                hasRequestedBefore = true,
+                deniedPermissions = setOf(MediaPermissionPolicy.READ_MEDIA_IMAGES),
+                permissionsWithRationale = setOf(MediaPermissionPolicy.READ_MEDIA_IMAGES),
+            ),
+        )
+    }
+
+    @Test
+    fun `repeated denial without rationale routes to app settings`() {
+        assertEquals(
+            true,
+            MediaPermissionPolicy.shouldOpenAppSettings(
+                hasRequestedBefore = true,
+                deniedPermissions = setOf(MediaPermissionPolicy.READ_MEDIA_IMAGES),
+                permissionsWithRationale = emptySet(),
+            ),
+        )
+    }
+
+    @Test
     fun `no grant is denied`() {
         assertEquals(MediaAccessLevel.DENIED, MediaPermissionPolicy.resolveAccess(36, emptySet()))
     }

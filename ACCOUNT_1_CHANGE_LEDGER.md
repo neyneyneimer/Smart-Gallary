@@ -11,8 +11,8 @@
 |---|---|---|
 | `app/build.gradle.kts` | Generate versionCode from CI run number (+1000), local fallback and dynamic versionName; add a verification Gradle task. | Build configuration only. |
 | `.github/workflows/android.yml` | Add explicit generated-version verification. | Shared CI workflow; coordinate future workflow edits. |
-| `presentation/GalleryScreen.kt` | Retain GalleryRoute coordinator, wire refresh and add screen composition fallback wrappers. | Shared route. Existing Account 2 AI Sets/People state and use cases are preserved. |
-| `presentation/LibraryScreen.kt` | Extract Library grid/filters/tiles; add nested-scroll pull-to-refresh, refreshing indicator and retry Snackbar. | Main Library UI ownership moves here. |
+| `presentation/GalleryScreen.kt` | Retain GalleryRoute coordinator, wire refresh and screen fallbacks; detect repeated permission denial and route users to Android app settings. | Shared route. Existing Account 2 AI Sets/People state and use cases are preserved. |
+| `presentation/LibraryScreen.kt` | Extract Library grid/filters/tiles; add nested-scroll pull-to-refresh, refreshing indicator and retry Snackbar; expose permanent-denial state. | Main Library UI ownership moves here. |
 | `presentation/AlbumsScreen.kt` | Extract Albums and album detail UI. | Extracted from GalleryScreen. |
 | `presentation/RecentlyDeletedScreen.kt` | Extract Recently Deleted/recovery UI. | Room trash semantics unchanged. |
 | `presentation/MediaViewerScreen.kt` | Extract full-screen media viewer and actions. | Extracted from GalleryScreen. |
@@ -23,11 +23,17 @@
 | `presentation/FavouritesScreen.kt` | Add a reusable dedicated favourites surface based on existing favorite state. | Existing Library filter remains the current navigation path. |
 | `presentation/FeatureFlags.kt` | Default-off flags for cloud backup, MEGA, TeraBox and video frame analysis. | Presentation gates only. |
 | `presentation/ScreenErrorBoundary.kt` | Add a Compose-compatible fallback driven by ViewModel/caller error state. | Compose compiler does not support try/catch around composable calls; this is not an automatic composition exception catcher. |
-| `presentation/GalleryViewModel.kt` | Preserve refresh coalescer; add SQLiteException diagnostics and scan timing/item-count metrics. | Account 2 AI Set APIs remain unchanged; this is a shared ViewModel. |
+| `presentation/GalleryViewModel.kt` | Preserve refresh coalescer; add SQLiteException diagnostics and scan timing/item-count metrics; collect repository-level database error state. | Account 2 AI Set APIs remain unchanged; this is a shared ViewModel. |
 | `diagnostics/CrashReporter.kt` | Add no-op crash reporter integration seam. | No crash data upload. |
+| `diagnostics/GalleryErrorReporter.kt` | Publish safe user-facing messages for Room SQLite failures. | Local-only diagnostics; no data upload. |
+| `diagnostics/CrashRecoveryStore.kt` | Persist a minimal fatal-crash marker so next launch can show a recovery dialog. | Stores only a boolean in app-private preferences. |
+| `data/repository/RoomMediaRepository.kt` | Catch SQLiteException on all Room read/write paths; keep observation flows safe and publish shared error state. | Existing schema/DAO untouched. |
+| `MainActivity.kt` | Consume fatal-crash marker and show generic next-launch recovery dialog. | No automatic crash recovery of in-flight operations. |
+| `platform/MediaPermissionPolicy.kt` | Add pure policy for deciding when repeated denial should open app settings. | API-aware permission policy only. |
 | `diagnostics/PerformanceMetrics.kt` | Log cold start, scan duration, heap, scroll frame timing and peak scroll heap. | Local-only; device measurements pending. |
 | `AuraGalleryApplication.kt` | Mark process start and install uncaught-exception logging/forwarding. | App lifecycle surface. |
-| `MediaPermissionPolicyTest.kt` | Add API 34/36 full/partial/revoked permission-policy unit tests. | Policy-only tests; OS/device verification remains open. |
+| `MediaPermissionPolicyTest.kt` | Add API 34/36 full/partial/revoked policy tests plus first-denial/rationale/permanent-denial settings routing tests. | Policy-only tests; OS/device verification remains open. |
+| `diagnostics/GalleryErrorReporterTest.kt` | Verify safe database failure messaging and clearing without exposing filesystem paths. | Unit test. |
 | `presentation/FeatureFlagsTest.kt` | Assert unfinished feature flags default off. | New unit test. |
 | `ROADMAP.md` | Add target/measurement table and keep device results explicitly unmeasured. | Documentation only. |
 | `ACCOUNT_1_CHANGE_LEDGER.md` | Keep this file-level cross-account record. | Update whenever the patch adds/removes a changed file. |
@@ -42,5 +48,5 @@
 ## Validation status
 
 - Required CI gate: `./gradlew --no-daemon :app:check :app:testDebugUnitTest :app:assembleDebug`.
-- API 33/34/36 runtime permission acceptance and 1,000+ media measurements remain device/emulator gates.
+- API 33/34/36 runtime permission acceptance and 1,000+ media measurements remain device/emulator gates. The current build sandbox has no emulator binary or attached ADB device.
 - Never mark a performance target passed without device log measurements.

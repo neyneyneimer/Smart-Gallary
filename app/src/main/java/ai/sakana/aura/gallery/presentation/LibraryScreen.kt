@@ -102,6 +102,7 @@ internal enum class LibraryFilter { ALL, PHOTOS, VIDEOS, FAVORITES }
 internal fun LibraryScreen(
     items: List<MediaItem>,
     access: MediaAccessLevel,
+    accessPermanentlyDenied: Boolean = false,
     refreshing: Boolean,
     error: String?,
     selectedUris: Set<String>,
@@ -196,7 +197,11 @@ internal fun LibraryScreen(
             )
         }
         when {
-            access == MediaAccessLevel.DENIED && items.isEmpty() -> FirstRunLibrary(onChooseMedia, onRequestAccess)
+            access == MediaAccessLevel.DENIED && items.isEmpty() -> FirstRunLibrary(
+                onChooseMedia,
+                onRequestAccess,
+                accessPermanentlyDenied = accessPermanentlyDenied,
+            )
             filtered.isEmpty() && refreshing -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("SCANNING DEVICE LIBRARY", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
             }

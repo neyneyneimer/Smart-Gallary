@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import ai.sakana.aura.gallery.diagnostics.PerformanceMetrics
+import ai.sakana.aura.gallery.diagnostics.GalleryErrorReporter
 
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
@@ -59,6 +60,7 @@ class GalleryViewModel @Inject constructor(
     private val mergeAiSets: MergeAiSetsUseCase,
     private val removeMediaFromAiSet: RemoveMediaFromAiSetUseCase,
     private val deleteAiSet: DeleteAiSetUseCase,
+    private val galleryErrorReporter: GalleryErrorReporter,
 ) : ViewModel() {
     val sceneClusters: StateFlow<List<SceneCluster>> = observeSceneClusters().stateIn(
         scope = viewModelScope,
@@ -104,6 +106,14 @@ class GalleryViewModel @Inject constructor(
     private val refreshRequestCoalescer = RefreshRequestCoalescer()
     private var refreshJob: Job? = null
     private var hasCompletedMediaStoreScan = false
+
+    init {
+        viewModelScope.launch {
+            galleryErrorReporter.message.collect { message ->
+                if (!message.isNullOrBlank()) _errorMessage.value = message
+            }
+        }
+    }
 
     fun refresh() {
         if (refreshJob?.isActive == true) {
@@ -275,6 +285,7 @@ class GalleryViewModel @Inject constructor(
 
     fun clearError() {
         _errorMessage.value = null
+        galleryErrorReporter.clear()
     }
 }
 

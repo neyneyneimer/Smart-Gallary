@@ -7,15 +7,18 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.Settings
 import android.net.Uri
 import android.os.Build
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
+import androidx.core.app.ActivityCompat
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -97,6 +100,8 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var access by remember { mutableStateOf(readMediaAccess(context)) }
+    var hasRequestedMediaPermission by rememberSaveable { mutableStateOf(false) }
+    var permissionPermanentlyDenied by rememberSaveable { mutableStateOf(false) }
     val items by viewModel.mediaItems.collectAsState()
     val trashedItems by viewModel.trashedItems.collectAsState()
     val refreshing by viewModel.isRefreshing.collectAsState()
@@ -122,7 +127,20 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     )
     val permissionRequest = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-        { access = readMediaAccess(context) },
+        { results ->
+            access = readMediaAccess(context)
+            val denied = results.filterValues { !it }.keys
+            val activity = context as? android.app.Activity
+            val permissionsWithRationale = if (activity == null) emptySet() else denied.filter {
+                ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
+            }.toSet()
+            permissionPermanentlyDenied = access == MediaAccessLevel.DENIED &&
+                MediaPermissionPolicy.shouldOpenAppSettings(
+                    hasRequestedBefore = hasRequestedMediaPermission && activity != null,
+                    deniedPermissions = denied,
+                    permissionsWithRationale = permissionsWithRationale,
+                )
+        },
     )
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -130,6 +148,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                 val resumedAccess = readMediaAccess(context)
                 access = resumedAccess
                 if (resumedAccess != MediaAccessLevel.DENIED) {
+                    permissionPermanentlyDenied = false
                     // Refresh the catalogue after returning from another app or a permission prompt.
                     // GalleryViewModel coalesces overlapping requests.
                     viewModel.refresh()
@@ -147,7 +166,15 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
     }
     val requestAccess = {
-        permissionRequest.launch(MediaPermissionPolicy.requiredPermissions(Build.VERSION.SDK_INT).toTypedArray())
+        if (permissionPermanentlyDenied) {
+            val settingsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.fromParts("package", context.packageName, null)
+            }
+            context.startActivity(settingsIntent)
+        } else {
+            hasRequestedMediaPermission = true
+            permissionRequest.launch(MediaPermissionPolicy.requiredPermissions(Build.VERSION.SDK_INT).toTypedArray())
+        }
     }
 
     if (pendingTrashUris != null) {
@@ -246,6 +273,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     LibraryScreen(
                     items = items,
                     access = access,
+                    accessPermanentlyDenied = permissionPermanentlyDenied,
                     refreshing = refreshing,
                     error = error,
                     selectedUris = selected,
@@ -657,7 +685,7 @@ private fun SheetNavigationRow(title: String, subtitle: String, icon: ImageVecto
 }
 
 @Composable
-internal fun FirstRunLibrary(onChoosePhotos: () -> Unit, onAllowAccess: () -> Unit) {
+internal fun FirstRunLibrary(onChoosePhotos: () -> Unit, onAllowAccess: () -> Unit, accessPermanentlyDenied: Boolean = false) {
     Column(
         Modifier.fillMaxSize().padding(horizontal = 28.dp),
         verticalArrangement = Arrangement.Center,
@@ -666,13 +694,17 @@ internal fun FirstRunLibrary(onChoosePhotos: () -> Unit, onAllowAccess: () -> Un
         Text("No media yet", color = AuraTokens.Paper, fontFamily = InstrumentSerif, fontSize = 34.sp)
         Spacer(Modifier.height(12.dp))
         Text(
-            "Choose photos, or allow Aura to show your device library. You stay in control of what the app can see.",
+            if (accessPermanentlyDenied) {
+                "Media access is turned off in Android settings. Open app settings to allow Aura to show your device library, or choose photos directly."
+            } else {
+                "Choose photos, or allow Aura to show your device library. You stay in control of what the app can see."
+            },
             color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 14.sp, lineHeight = 22.sp,
         )
         Spacer(Modifier.height(24.dp))
         AmberButton("PICK PHOTOS & VIDEOS", onChoosePhotos)
         TextButton(onClick = onAllowAccess) {
-            Text("ALLOW LIBRARY ACCESS", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, letterSpacing = 1.sp)
+            Text(if (accessPermanentlyDenied) "OPEN APP SETTINGS" else "ALLOW LIBRARY ACCESS", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, letterSpacing = 1.sp)
         }
     }
 }
