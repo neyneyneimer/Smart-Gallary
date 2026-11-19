@@ -13,6 +13,32 @@
 
 **Important:** A clean Android foundation was previously built in an isolated ParallelSandbox workspace on 18 November 2026 (`assembleDebug`, `check` and `assembleRelease` succeeded there). That source was not pushed to GitHub. It is prior test evidence only; it does not count as M0 complete until the source is committed and the GitHub build is verified.
 
+## Priority correction — primary intelligence feature
+
+**Product rule:** Aura's primary purpose is to recognize related media and group it into People and AI Sets. Multi-cloud import/export/sync is optional and must not block local recognition or gallery use.
+
+## M2 — On-device recognition and AI Sets
+
+**Status: In progress — scene-similarity suggestions and face-location detection are implemented; identity grouping and user-managed sets remain incomplete.**
+
+- [x] Bundle a pinned MediaPipe Image Embedder MobileNet V3 Small float32 model at build time; verify the downloaded model SHA-256 before packaging.
+- [x] Run scene feature extraction entirely on-device; no image, video, embedding or face data is uploaded.
+- [x] Sample video frames at 18%, 50% and 82% of duration and aggregate their normalized scene feature vectors.
+- [x] Correct photo EXIF orientation before analysis and bound decoded image/frame dimensions.
+- [x] Detect face locations on-device with bundled ML Kit Face Detection; persist normalized boxes and video frame timestamps separately from scene vectors.
+- [x] Persist scene vectors, model version and source fingerprint in Room; add explicit v2→v3→v4 migrations.
+- [x] Reuse cached embeddings only when both model version and source fingerprint match; include MediaStore modified time in the fingerprint.
+- [x] Cluster compatible vectors with cosine similarity, LSH candidate search and deterministic union-find grouping; regression test a 300-item candidate bucket.
+- [x] Connect People and AI Sets screens to real scan results and show honest progress/failure states.
+- [ ] Evaluate scene-similarity precision/recall against a labelled on-device set of recurring rooms, outfits, backgrounds and compositions; tune the threshold before treating suggestions as final AI Sets.
+- [ ] Add user-confirmed AI Sets with persistent names and manual merge, split, rename and membership editing.
+- [ ] Select and license a face-identity embedding model; ML Kit detection alone must never be represented as person recognition.
+- [ ] Implement per-face embeddings, normalization, similarity clustering and manually editable person identities only after model licensing and validation.
+- [ ] Add couple/person-combination grouping while keeping identities independent from scene groups.
+- [ ] Validate recognition on a real 2,000+ item photo/video library, including cross-date and cross-video matches, memory use and scan interruption/retry.
+
+**M2 exit criteria:** AI Set suggestions reliably group recurring visual setups across different dates while keeping person identity independent. People groups are based on a licensed and validated face embedding model—not face boxes or detector tracking IDs. Users can review and manually correct groups. All pixel processing and inference remains on-device.
+
 ## M0 — Android build foundation
 
 **Status: In progress — local debug/release build gates pass; fresh GitHub Actions JDK 17 run and device installation are still pending.**
@@ -58,9 +84,9 @@
 - API 33, 34 and 36 permission paths work; partial-access users still see selected media.
 - Photo Picker imports continue working without broad library permission.
 
-## M2 — Real deduplication, editing and export
+## M3 — Real deduplication, editing and export
 
-**Status: Not started**
+**Status: Not started — follows the primary recognition milestone.**
 
 - [ ] Implement SHA-256 over file bytes for exact-duplicate identity.
 - [ ] Implement 64-bit dHash over decoded image content.
@@ -74,15 +100,15 @@
 - [ ] Export edited images to MediaStore under `Pictures/AuraGallery`, using `IS_PENDING` while writing.
 - [ ] Preserve original pixels and prove revert/export behavior through tests.
 
-**M2 exit criteria:**
+**M3 exit criteria:**
 - Two renamed copies of the same bytes are flagged as exact duplicates.
 - A recompressed 80%-quality copy is identified as similar, not exact.
 - Edited output is visible in the system gallery app.
 - Revert/export does not overwrite the original; reverting restores original pixels.
 
-## M3 — Real cloud backup
+## M4 — Optional cloud import, export and backup
 
-**Status: Not started**
+**Status: Optional / not started — this must not delay local recognition.**
 
 - [ ] Define provider-neutral cloud repository interface and item-level backup states.
 - [ ] Implement real OAuth and upload for Google Drive API v3.
@@ -101,15 +127,11 @@
 - A file downloaded from Drive is byte-for-byte identical to the phone source.
 - Provider errors are visible and recoverable; no simulated delay-loop is presented as backup.
 
-## M4 — Advanced features and production hardening
+## M5 — Advanced features and production hardening
 
 **Status: Not started; intentionally deferred**
 
-- [ ] Add on-device ML Kit face detection and clearly label it as detection only.
-- [ ] Obtain and license a real FaceNet/MobileFaceNet TFLite embedding model asset.
-- [ ] Implement face crop/normalization, embeddings, cosine similarity and clustering only after the model is present and validated.
-- [ ] Add manual person labels and cluster-centroid updates; do not infer a person's identity.
-- [ ] Add Room FTS4 search across title, face tags, attire, environment and lighting.
+- [ ] Add Room FTS4 search across title, manual person labels, attire, environment and lighting.
 - [ ] Add storage optimizer insights for large files, similar photos, screenshots and blurred photos.
 - [ ] Add safe bulk actions with undo.
 - [ ] Extract stable code into modules only when an actual seam and measurable benefit exist.
@@ -118,7 +140,7 @@
 - [ ] Add localization/internationalization and accessibility review.
 - [ ] Run final dependency, security, performance, memory and install/update checks.
 
-**M4 exit criteria:** Each shipped feature has a real implementation, user-visible failure states and tests. Face grouping is not marked complete without the licensed model asset and measured clustering behavior.
+**M5 exit criteria:** Each shipped feature has a real implementation, user-visible failure states and tests. Recognition completion still requires the M2 model, device and user-correction acceptance gates.
 
 ## Cross-milestone quality gates
 
@@ -140,6 +162,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-11-19 | M2 recognition foundation: checksum-pinned local MobileNet V3 Image Embedder, sampled video-frame scene vectors, separate ML Kit face-location detections, Room v4 persistence/migrations, similarity suggestions in People/AI Sets screens, and deterministic LSH clustering tests. Scene suggestions and face detection are not the same as validated scene sets or person identity. |
 | 2026-11-19 | Established v2.1 milestone order; created legacy reference branch; added project plan. |
 | 2026-11-19 | Applied the uploaded Aura UI design system to Compose, bundled Instrument Serif/Manrope/JetBrains Mono with OFL licences, added all five destinations and a non-destructive tone preview. Unimplemented M2–M4 data is clearly labelled rather than shown as mock metrics. |
 | 2026-11-19 | Created android/rebuild-m1; added launcher app, MediaStore/Photo Picker repository, Room favourites, permission-aware Compose grid, schema v1, six permission tests and Android CI workflow. Local debug/release/check/unit-test build passed on JDK 21. Device/API and JDK 17 CI gates remain pending. |

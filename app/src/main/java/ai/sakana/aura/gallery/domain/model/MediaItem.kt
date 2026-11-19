@@ -16,6 +16,7 @@ data class MediaItem(
     val durationMillis: Long = 0L,
     val isTrashed: Boolean = false,
     val trashedAtEpochMillis: Long = 0L,
+    val dateModifiedEpochMillis: Long = 0L,
 ) {
     val isVideo: Boolean get() = mediaType == "VIDEO" || mimeType.orEmpty().startsWith("video/")
 }

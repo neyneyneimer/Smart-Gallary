@@ -137,4 +137,5 @@ private fun MediaItemEntity.toDomain() = MediaItem(
     durationMillis = durationMillis,
     isTrashed = isTrashed,
     trashedAtEpochMillis = trashedAtEpochMillis,
+    dateModifiedEpochMillis = dateModifiedEpochMillis,
 )

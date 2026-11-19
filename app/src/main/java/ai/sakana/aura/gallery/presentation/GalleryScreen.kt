@@ -77,6 +77,8 @@ import ai.sakana.aura.gallery.design.InstrumentSerif
 import ai.sakana.aura.gallery.design.JetBrainsMono
 import ai.sakana.aura.gallery.design.Manrope
 import ai.sakana.aura.gallery.domain.model.MediaItem
+import ai.sakana.aura.gallery.domain.recognition.DetectedFace
+import ai.sakana.aura.gallery.domain.recognition.SceneCluster
 import ai.sakana.aura.gallery.platform.MediaAccessLevel
 import ai.sakana.aura.gallery.platform.MediaPermissionPolicy
 import java.time.ZoneId
@@ -97,6 +99,9 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     val trashedItems by viewModel.trashedItems.collectAsState()
     val refreshing by viewModel.isRefreshing.collectAsState()
     val error by viewModel.errorMessage.collectAsState()
+    val sceneClusters by viewModel.sceneClusters.collectAsState()
+    val detectedFaces by viewModel.detectedFaces.collectAsState()
+    val recognitionProgress by viewModel.recognitionProgress.collectAsState()
     var destination by remember { mutableStateOf(Destination.PHOTOS) }
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -253,8 +258,18 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     onOptimize = { destination = Destination.OPTIMIZE },
                     onSettings = { destination = Destination.SETTINGS },
                 )
-                Destination.PEOPLE -> PeopleScreen()
-                Destination.AI_SETS -> AiSetsScreen()
+                Destination.PEOPLE -> PeopleScreen(
+                    items = items,
+                    faces = detectedFaces,
+                    progress = recognitionProgress,
+                    onAnalyze = { viewModel.analyzeLibrary(items) },
+                )
+                Destination.AI_SETS -> AiSetsScreen(
+                    items = items,
+                    clusters = sceneClusters,
+                    progress = recognitionProgress,
+                    onAnalyze = { viewModel.analyzeLibrary(items) },
+                )
                 Destination.OPTIMIZE -> OptimizeScreen(items)
                 Destination.SETTINGS -> SettingsScreen(context, items)
             }
@@ -725,7 +740,7 @@ private fun ExploreScreen(onPeople: () -> Unit, onAiSets: () -> Unit, onOptimize
     Column(Modifier.fillMaxSize().background(AuraTokens.Void).verticalScroll(rememberScrollState())) {
         PageHeader("Explore", "PEOPLE · AI SETS · TOOLS")
         ExploreAction("People", "Group faces and manage identities on-device", Icons.Outlined.PeopleOutline, onPeople)
-        ExploreAction("AI Sets", "Find recurring scenes, outfits and visual setups", Icons.Outlined.AutoAwesome, {})
+        ExploreAction("AI Sets", "Find recurring scenes, outfits and visual setups", Icons.Outlined.AutoAwesome, onAiSets)
         ExploreAction("Optimize", "Review storage usage and duplicate scans", Icons.Outlined.Tune, onOptimize)
         ExploreAction("Settings", "Backup, permissions and privacy controls", Icons.Outlined.Settings, onSettings)
         Text("AI Sets and face clustering are not active in this build yet.", Modifier.padding(horizontal = 20.dp, vertical = 16.dp), color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 11.sp)
@@ -733,14 +748,168 @@ private fun ExploreScreen(onPeople: () -> Unit, onAiSets: () -> Unit, onOptimize
 }
 
 @Composable
-private fun AiSetsScreen() {
+private fun AiSetsScreen(
+    items: List<MediaItem>,
+    clusters: List<SceneCluster>,
+    progress: RecognitionProgress,
+    onAnalyze: () -> Unit,
+) {
+    val mediaByUri = remember(items) { items.associateBy(MediaItem::contentUri) }
     Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
-        PageHeader("AI Sets", "SCENE GROUPING · NOT YET ACTIVE")
-        InfoRule(
-            title = "AI Set analysis is not running",
-            message = "Aura will group recurring backgrounds, rooms, outfits and compositions independently from the people in each image. The on-device scene indexer is not implemented in this build.",
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        )
+        PageHeader("AI Sets", "ON-DEVICE SCENE SIMILARITY")
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            InfoRule(
+                title = "Scene similarity suggestions",
+                message = "These are unconfirmed suggestions, not saved AI Sets yet. The current MobileNet V3 feature model was trained on ImageNet, so it provides broad visual similarity rather than a validated room/outfit/composition matcher. Review results before relying on them.",
+                modifier = Modifier,
+            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("${clusters.size} suggested sets", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text("${clusters.sumOf { it.mediaUris.size }} grouped items", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                }
+                AmberButton(
+                    if (progress.isRunning) "ANALYZING" else if (progress.total > 0) "RESCAN" else "ANALYZE LIBRARY",
+                    onAnalyze,
+                    enabled = !progress.isRunning && items.isNotEmpty(),
+                    height = 42,
+                )
+            }
+            if (progress.isRunning || progress.total > 0) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AuraTokens.Surface1).padding(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(if (progress.isRunning) "ANALYZING ON THIS DEVICE" else "LAST ANALYSIS", color = AuraTokens.PaperMuted, fontFamily = JetBrainsMono, fontSize = 9.sp)
+                        Text("${progress.completed}/${progress.total}", color = AuraTokens.Paper, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { if (progress.total == 0) 0f else progress.completed.toFloat() / progress.total },
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = AuraTokens.Safelight,
+                        trackColor = AuraTokens.Surface3,
+                    )
+                    if (!progress.isRunning) {
+                        Spacer(Modifier.height(7.dp))
+                        Text("${progress.processed} analyzed · ${progress.alreadyAnalyzed} reused · ${progress.failed} failed", color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 10.sp)
+                    }
+                    progress.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                }
+            }
+            if (clusters.isEmpty()) {
+                EmptyIndexState(
+                    if (progress.total > 0 && !progress.isRunning) "No matching scene groups yet" else "AI Sets are ready to analyze",
+                    if (items.isEmpty()) "Add local photos or videos first. The scene indexer runs entirely on this device."
+                    else "Run analysis to find visually related scenes across different dates. Suggestions are candidates for review, not proof that two files are identical.",
+                )
+            } else {
+                clusters.forEachIndexed { index, cluster ->
+                    SceneClusterCard(
+                        title = "Suggested Set ${ (index + 1).toString().padStart(2, '0') }",
+                        cluster = cluster,
+                        mediaByUri = mediaByUri,
+                    )
+                }
+            }
+            Text(
+                "LOCAL ANALYSIS · NO MEDIA UPLOAD · ORIGINAL FILES UNCHANGED",
+                color = AuraTokens.PaperFaint,
+                fontFamily = JetBrainsMono,
+                fontSize = 9.sp,
+                letterSpacing = 0.4.sp,
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SceneClusterCard(
+    title: String,
+    cluster: SceneCluster,
+    mediaByUri: Map<String, MediaItem>,
+) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AuraTokens.Surface1).padding(12.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text("${cluster.mediaUris.size} media items", color = AuraTokens.PaperFaint, fontFamily = Manrope, fontSize = 10.sp)
+            }
+            Text("${(cluster.averageSimilarity * 100).toInt()}% avg", color = AuraTokens.Safelight, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            cluster.mediaUris.take(4).forEach { uri ->
+                val media = mediaByUri[uri]
+                if (media != null) {
+                    Box(Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(AuraTokens.Surface2)) {
+                        if (media.isVideo) VideoFrameThumbnail(media, Modifier.fillMaxSize())
+                        else AsyncImage(model = uri.toUri(), contentDescription = media.displayName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("Scene-similarity candidate · review before treating as one set", color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 9.sp)
+    }
+}
+
+@Composable
+private fun PeopleScreen(
+    items: List<MediaItem>,
+    faces: List<DetectedFace>,
+    progress: RecognitionProgress,
+    onAnalyze: () -> Unit,
+) {
+    val mediaByUri = remember(items) { items.associateBy(MediaItem::contentUri) }
+    val detectedMedia = remember(faces) { faces.groupBy(DetectedFace::contentUri) }
+    Column(Modifier.fillMaxSize().background(AuraTokens.Void)) {
+        PageHeader("People", "ON-DEVICE FACE DETECTION")
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+            InfoRule(
+                title = "Face detection is active",
+                message = "Aura stores face locations from photos and sampled video frames. This detector finds face regions; it does not identify who a person is. Person grouping will only be enabled after a licensed identity-embedding model is validated.",
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("${faces.size} face detections", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text("${detectedMedia.size} media items with faces", color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 9.sp)
+                }
+                AmberButton(
+                    if (progress.isRunning) "ANALYZING" else "ANALYZE LIBRARY",
+                    onAnalyze,
+                    enabled = !progress.isRunning && items.isNotEmpty(),
+                    height = 42,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            if (detectedMedia.isEmpty()) {
+                EmptyIndexState(
+                    "No face detections yet",
+                    if (items.isEmpty()) "Add local photos or videos first."
+                    else "Run on-device analysis. Aura will locate faces, but will not claim that different images contain the same person.",
+                )
+            } else {
+                detectedMedia.entries.sortedByDescending { it.value.size }.forEach { (uri, locations) ->
+                    val media = mediaByUri[uri] ?: return@forEach
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(9.dp)).background(AuraTokens.Surface1).padding(9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (media.isVideo) VideoFrameThumbnail(media, Modifier.size(66.dp).clip(RoundedCornerShape(5.dp)))
+                        else AsyncImage(model = uri.toUri(), contentDescription = null, modifier = Modifier.size(66.dp).clip(RoundedCornerShape(5.dp)), contentScale = ContentScale.Crop)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text(media.displayName ?: if (media.isVideo) "Video" else "Photo", color = AuraTokens.Paper, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${locations.size} face detections${if (media.isVideo) " · sampled frames" else ""}", color = AuraTokens.PaperMuted, fontFamily = Manrope, fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+            Text("FACE LOCATIONS ONLY · NO IDENTITY LABELS", Modifier.padding(vertical = 12.dp), color = AuraTokens.PaperFaint, fontFamily = JetBrainsMono, fontSize = 9.sp)
+        }
     }
 }
 
@@ -1194,9 +1363,10 @@ private fun ErrorRule(message: String, onDismiss: () -> Unit, modifier: Modifier
 }
 
 @Composable
-private fun AmberButton(text: String, onClick: () -> Unit, height: Int = 48) {
+private fun AmberButton(text: String, onClick: () -> Unit, height: Int = 48, enabled: Boolean = true) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.height(height.dp),
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(containerColor = AuraTokens.Safelight, contentColor = AuraTokens.InkOnAmber),

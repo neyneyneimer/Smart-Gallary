@@ -11,6 +11,8 @@ lifecycle = "2.9.2"
 hiltNavigation = "1.2.0"
 core = "1.16.0"
 coil = "3.0.4"
+mediapipeTasks = "1.2.2"
+mlkitFace = "16.1.7"
 junit = "4.13.2"
 androidTestJunit = "1.2.1"
 espresso = "3.6.1"
@@ -35,6 +37,8 @@ hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", ve
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil = { module = "io.coil-kt.coil3:coil", version.ref = "coil" }
+mediapipe-tasks-vision = { module = "com.google.mediapipe:tasks-vision", version.ref = "mediapipeTasks" }
+mlkit-face-detection = { module = "com.google.mlkit:face-detection", version.ref = "mlkitFace" }
 timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-test-junit = { module = "androidx.test.ext:junit", version.ref = "androidTestJunit" }

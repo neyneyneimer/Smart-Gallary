@@ -9,3 +9,4 @@ captures/
 .cxx/
 *.jks
 *.keystore
+app/src/main/assets/mobilenet_v3_small.tflite

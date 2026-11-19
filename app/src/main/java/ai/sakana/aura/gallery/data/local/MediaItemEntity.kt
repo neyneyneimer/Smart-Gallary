@@ -34,4 +34,5 @@ data class MediaItemEntity(
     @ColumnInfo(defaultValue = "0") val durationMillis: Long = 0L,
     @ColumnInfo(defaultValue = "0") val isTrashed: Boolean = false,
     @ColumnInfo(defaultValue = "0") val trashedAtEpochMillis: Long = 0L,
+    @ColumnInfo(defaultValue = "0") val dateModifiedEpochMillis: Long = 0L,
 )

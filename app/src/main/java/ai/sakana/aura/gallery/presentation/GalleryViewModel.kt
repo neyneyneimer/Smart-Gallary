@@ -3,6 +3,7 @@ package ai.sakana.aura.gallery.presentation
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.usecase.ImportPickedMediaUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveMediaUseCase
 import ai.sakana.aura.gallery.domain.usecase.RefreshMediaStoreUseCase
@@ -10,6 +11,11 @@ import ai.sakana.aura.gallery.domain.usecase.ToggleFavoriteUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveTrashedMediaUseCase
 import ai.sakana.aura.gallery.domain.usecase.MoveToTrashUseCase
 import ai.sakana.aura.gallery.domain.usecase.RestoreFromTrashUseCase
+import ai.sakana.aura.gallery.domain.usecase.AnalyzeMediaLibraryUseCase
+import ai.sakana.aura.gallery.domain.usecase.ObserveSceneClustersUseCase
+import ai.sakana.aura.gallery.domain.usecase.ObserveDetectedFacesUseCase
+import ai.sakana.aura.gallery.domain.recognition.SceneCluster
+import ai.sakana.aura.gallery.domain.recognition.DetectedFace
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -30,7 +36,20 @@ class GalleryViewModel @Inject constructor(
     observeTrashedMedia: ObserveTrashedMediaUseCase,
     private val moveToTrash: MoveToTrashUseCase,
     private val restoreFromTrash: RestoreFromTrashUseCase,
+    private val analyzeMediaLibrary: AnalyzeMediaLibraryUseCase,
+    observeSceneClusters: ObserveSceneClustersUseCase,
+    observeDetectedFaces: ObserveDetectedFacesUseCase,
 ) : ViewModel() {
+    val sceneClusters: StateFlow<List<SceneCluster>> = observeSceneClusters().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+    val detectedFaces: StateFlow<List<DetectedFace>> = observeDetectedFaces().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
     val trashedItems = observeTrashedMedia().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -47,6 +66,9 @@ class GalleryViewModel @Inject constructor(
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    private val _recognitionProgress = MutableStateFlow(RecognitionProgress())
+    val recognitionProgress: StateFlow<RecognitionProgress> = _recognitionProgress.asStateFlow()
 
     fun refresh() {
         if (_isRefreshing.value) return
@@ -126,7 +148,47 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
+    fun analyzeLibrary(items: List<MediaItem>) {
+        if (_recognitionProgress.value.isRunning || items.isEmpty()) return
+        viewModelScope.launch {
+            _recognitionProgress.value = RecognitionProgress(isRunning = true, total = items.size)
+            try {
+                val summary = analyzeMediaLibrary(items) { completed, total ->
+                    _recognitionProgress.value = _recognitionProgress.value.copy(
+                        completed = completed,
+                        total = total,
+                    )
+                }
+                _recognitionProgress.value = RecognitionProgress(
+                    completed = items.size,
+                    total = items.size,
+                    processed = summary.processed,
+                    alreadyAnalyzed = summary.alreadyAnalyzed,
+                    failed = summary.failed,
+                    isRunning = false,
+                )
+                Timber.i("On-device media analysis finished: processed=%d cached=%d failed=%d", summary.processed, summary.alreadyAnalyzed, summary.failed)
+            } catch (cancelled: CancellationException) {
+                _recognitionProgress.value = _recognitionProgress.value.copy(isRunning = false)
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.e(error, "On-device media analysis failed")
+                _recognitionProgress.value = _recognitionProgress.value.copy(isRunning = false, error = "Analysis stopped. Check media access and try again.")
+            }
+        }
+    }
+
     fun clearError() {
         _errorMessage.value = null
     }
 }
+
+data class RecognitionProgress(
+    val completed: Int = 0,
+    val total: Int = 0,
+    val processed: Int = 0,
+    val alreadyAnalyzed: Int = 0,
+    val failed: Int = 0,
+    val isRunning: Boolean = false,
+    val error: String? = null,
+)

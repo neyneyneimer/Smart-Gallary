@@ -18,9 +18,17 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AuraGalleryDatabase =
         Room.databaseBuilder(context, AuraGalleryDatabase::class.java, "aura_gallery.db")
-            .addMigrations(AuraGalleryDatabase.MIGRATION_1_2)
+            .addMigrations(
+                AuraGalleryDatabase.MIGRATION_1_2,
+                AuraGalleryDatabase.MIGRATION_2_3,
+                AuraGalleryDatabase.MIGRATION_3_4,
+            )
             .build()
 
     @Provides
     fun provideMediaItemDao(database: AuraGalleryDatabase): MediaItemDao = database.mediaItemDao()
+
+    @Provides
+    fun provideMediaRecognitionDao(database: AuraGalleryDatabase): ai.sakana.aura.gallery.data.local.MediaRecognitionDao =
+        database.mediaRecognitionDao()
 }

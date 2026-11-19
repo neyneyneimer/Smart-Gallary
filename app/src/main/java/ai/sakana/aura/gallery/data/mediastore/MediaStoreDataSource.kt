@@ -30,6 +30,7 @@ class MediaStoreDataSource @Inject constructor(
             add(MediaStore.MediaColumns.SIZE)
             add(MediaStore.MediaColumns.DATE_TAKEN)
             add(MediaStore.MediaColumns.DATE_ADDED)
+            add(MediaStore.MediaColumns.DATE_MODIFIED)
             add(MediaStore.MediaColumns.WIDTH)
             add(MediaStore.MediaColumns.HEIGHT)
             add(bucketColumn)
@@ -51,6 +52,7 @@ class MediaStoreDataSource @Inject constructor(
                 val sizeIndex = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
                 val takenIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
                 val addedIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
+                val modifiedIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
                 val widthIndex = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
                 val heightIndex = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
                 val bucketIndex = cursor.getColumnIndex(bucketColumn)
@@ -73,6 +75,7 @@ class MediaStoreDataSource @Inject constructor(
                     val folderName = bucket?.takeIf(String::isNotBlank)
                         ?: relativePath.trimEnd('/').substringAfterLast('/').ifBlank { "Other" }
                     val contentUri = ContentUris.withAppendedId(collection, mediaStoreId)
+                    val modifiedSeconds = if (modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) cursor.getLong(modifiedIndex) else 0L
                     result += MediaItemEntity(
                         volumeName = "external",
                         mediaStoreId = mediaStoreId,
@@ -88,6 +91,7 @@ class MediaStoreDataSource @Inject constructor(
                         bucketName = folderName,
                         relativePath = relativePath,
                         durationMillis = durationIndex.takeIf { it >= 0 && !cursor.isNull(it) }?.let(cursor::getLong)?.coerceAtLeast(0L) ?: 0L,
+                        dateModifiedEpochMillis = modifiedSeconds.coerceAtLeast(0L) * 1_000L,
                     )
                 }
             }
