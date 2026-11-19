@@ -148,3 +148,11 @@ Out of scope for the first three milestones: a web gallery, a second backend-own
 
 ---
 This plan implements the corrected priority and engineering constraints from Spec v2.1. Where the older rebuild brief conflicts with v2.1 (notably build order, early multi-module extraction, permissions and face recognition), v2.1 governs.
+
+
+### M2 runtime regression note — 2026-11-19
+
+- MediaPipe ImageEmbedder initialization on Android 15 aborted in JNI when the minified debug APK caused Protobuf Lite `GeneratedMessageLite` default-instance lookup to fall through to `Unsafe.allocateInstance` for `com.google.protobuf.Any`.
+- Debug minification is now disabled (release minification remains enabled); Protobuf Lite message classes extending `GeneratedMessageLite` are kept for reflective/default-instance registration.
+- Emulator smoke test after fix: 5 local media items analyzed, 0 failures; suggestion saved and named; saved AI Set renamed; individual member removal verified (3→2); second set created and merged into the first (2 sets→1; duplicate memberships deduplicated); app process restarted and persisted set/name/members remained visible.
+- This test confirms runtime operation on synthetic emulator media, not scene-recognition precision/recall or general identity recognition.

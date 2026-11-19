@@ -165,6 +165,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-11-19 | M2 runtime verification: fixed MediaPipe Tasks JNI abort by disabling R8 for debug and preserving Protobuf Lite GeneratedMessageLite classes in minified builds. Android 15 emulator passed 5-item local scene analysis (0 failures), save/name, rename, remove member (3→2), merge (2 sets→1 set, 3 unique members), and app-restart persistence. Scene precision/recall evaluation and person identity embeddings remain open. |
 | 2026-11-19 | M2 recognition foundation: checksum-pinned local MobileNet V3 Image Embedder, sampled video-frame scene vectors, separate ML Kit face-location detections, Room v4 persistence/migrations, similarity suggestions in People/AI Sets screens, and deterministic LSH clustering tests. Scene suggestions and face detection are not the same as validated scene sets or person identity. |
 | 2026-11-19 | M2 user-managed AI Sets: Room v5 saved sets and membership records; save reviewed suggestions, rename, merge, delete, and remove individual media members. Domain regression tests cover name validation, duplicate membership, merge ordering and split behavior. Scene-precision evaluation and face identity embeddings remain open. |
 | 2026-11-19 | Established v2.1 milestone order; created legacy reference branch; added project plan. |

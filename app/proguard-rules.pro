@@ -5,3 +5,7 @@
 # Keep the generated metadata intact in minified debug and release builds.
 -keep class com.google.mediapipe.proto.** { *; }
 -keepclassmembers class com.google.mediapipe.proto.** { *; }
+
+# Protobuf Lite uses reflection to discover GeneratedMessageLite default instances and fields.
+# Keep generated messages intact so their static default-instance registration survives R8.
+-keep class * extends com.google.protobuf.GeneratedMessageLite { *; }
