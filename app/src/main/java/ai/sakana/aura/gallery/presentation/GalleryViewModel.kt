@@ -14,6 +14,7 @@ import ai.sakana.aura.gallery.domain.usecase.RestoreFromTrashUseCase
 import ai.sakana.aura.gallery.domain.usecase.AnalyzeMediaLibraryUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveSceneClustersUseCase
 import ai.sakana.aura.gallery.domain.usecase.ObserveDetectedFacesUseCase
+import ai.sakana.aura.gallery.domain.usecase.ObservePersonClustersUseCase
 import ai.sakana.aura.gallery.domain.recognition.AiSet
 import ai.sakana.aura.gallery.domain.usecase.ObserveAiSetsUseCase
 import ai.sakana.aura.gallery.domain.usecase.SaveAiSetUseCase
@@ -23,6 +24,7 @@ import ai.sakana.aura.gallery.domain.usecase.RemoveMediaFromAiSetUseCase
 import ai.sakana.aura.gallery.domain.usecase.DeleteAiSetUseCase
 import ai.sakana.aura.gallery.domain.recognition.SceneCluster
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
+import ai.sakana.aura.gallery.domain.recognition.PersonCluster
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -46,6 +48,7 @@ class GalleryViewModel @Inject constructor(
     private val analyzeMediaLibrary: AnalyzeMediaLibraryUseCase,
     observeSceneClusters: ObserveSceneClustersUseCase,
     observeDetectedFaces: ObserveDetectedFacesUseCase,
+    observePersonClusters: ObservePersonClustersUseCase,
     observeAiSets: ObserveAiSetsUseCase,
     private val saveAiSet: SaveAiSetUseCase,
     private val renameAiSet: RenameAiSetUseCase,
@@ -64,6 +67,12 @@ class GalleryViewModel @Inject constructor(
         initialValue = emptyList(),
     )
     val detectedFaces: StateFlow<List<DetectedFace>> = observeDetectedFaces().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    val personClusters: StateFlow<List<PersonCluster>> = observePersonClusters().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),

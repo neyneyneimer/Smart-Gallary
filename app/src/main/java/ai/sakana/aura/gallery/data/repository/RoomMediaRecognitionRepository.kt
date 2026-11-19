@@ -12,6 +12,9 @@ import ai.sakana.aura.gallery.data.recognition.SFaceFaceEmbedder
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
 import ai.sakana.aura.gallery.domain.recognition.SceneCluster
+import ai.sakana.aura.gallery.domain.recognition.FaceIdentityEmbedding
+import ai.sakana.aura.gallery.domain.recognition.FaceIdentityClusterer
+import ai.sakana.aura.gallery.domain.recognition.PersonCluster
 import ai.sakana.aura.gallery.domain.recognition.SceneEmbedding
 import ai.sakana.aura.gallery.domain.recognition.SceneSimilarityClusterer
 import ai.sakana.aura.gallery.domain.repository.MediaRecognitionRepository
@@ -22,6 +25,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
@@ -32,6 +36,7 @@ class RoomMediaRecognitionRepository @Inject constructor(
     private val analyzer: Lazy<OnDeviceMediaAnalyzer>,
 ) : MediaRecognitionRepository {
     private val clusterer = SceneSimilarityClusterer()
+    private val faceIdentityClusterer = FaceIdentityClusterer()
 
     override fun observeSceneClusters(): Flow<List<SceneCluster>> =
         dao.observeSceneEmbeddings().map { rows ->
@@ -48,6 +53,25 @@ class RoomMediaRecognitionRepository @Inject constructor(
 
     override fun observeDetectedFaces(): Flow<List<DetectedFace>> =
         dao.observeDetectedFaces().map { rows -> rows.map(DetectedFaceEntity::toDomain) }
+
+    override fun observePersonClusters(): Flow<List<PersonCluster>> =
+        dao.observeFaceEmbeddings().map { rows ->
+            val embeddings = rows.mapNotNull { row ->
+                if (row.modelVersion != SFaceFaceEmbedder.MODEL_VERSION) return@mapNotNull null
+                runCatching {
+                    FaceIdentityEmbedding(
+                        faceId = row.faceId,
+                        mediaUri = row.contentUri,
+                        modelVersion = row.modelVersion,
+                        vector = SceneVectorCodec.decode(row.vectorBytes, row.dimensions),
+                    )
+                }.onFailure { error ->
+                    Timber.w(error, "Ignoring invalid stored face feature")
+                }.getOrNull()
+            }
+            faceIdentityClusterer.cluster(embeddings)
+        }.flowOn(Dispatchers.Default)
+
 
     override suspend fun analyze(
         items: List<MediaItem>,

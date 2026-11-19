@@ -16,6 +16,12 @@ class ObserveDetectedFacesUseCase @Inject constructor(
     operator fun invoke() = repository.observeDetectedFaces()
 }
 
+class ObservePersonClustersUseCase @Inject constructor(
+    private val repository: MediaRecognitionRepository,
+) {
+    operator fun invoke() = repository.observePersonClusters()
+}
+
 class AnalyzeMediaLibraryUseCase @Inject constructor(
     private val repository: MediaRecognitionRepository,
 ) {
