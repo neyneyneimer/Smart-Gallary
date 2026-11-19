@@ -36,10 +36,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Build and test
         run: ./gradlew --no-daemon --stacktrace :app:check :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
-      - name: Verify and print exported Room schema v6
+      - name: Verify and print exported Room schema v7
         run: |
-          test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/6.json
-          cat app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/6.json
+          test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/7.json
+          cat app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/7.json
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:

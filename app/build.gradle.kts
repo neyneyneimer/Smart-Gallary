@@ -75,7 +75,50 @@ val downloadSceneEmbeddingModel by tasks.registering {
     }
 }
 
-tasks.named("preBuild").configure { dependsOn(downloadSceneEmbeddingModel) }
+val faceEmbeddingModel = layout.projectDirectory.file("src/main/assets/sface_2021dec_int8.onnx")
+val faceEmbeddingModelSha256 = "2b0e941e6f16cc048c20aee0c8e31f569118f65d702914540f7bfdc14048d78a"
+val downloadFaceEmbeddingModel by tasks.registering {
+    outputs.file(faceEmbeddingModel)
+    outputs.upToDateWhen {
+        val file = faceEmbeddingModel.asFile
+        file.isFile && file.inputStream().use { input ->
+            val digest = MessageDigest.getInstance("SHA-256")
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+            digest.digest().joinToString("") { byte -> "%02x".format(byte) } == faceEmbeddingModelSha256
+        }
+    }
+    doLast {
+        val output = faceEmbeddingModel.asFile
+        output.parentFile.mkdirs()
+        val temporary = output.resolveSibling(output.name + ".download")
+        try {
+            URI.create("https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_recognition_sface/face_recognition_sface_2021dec_int8.onnx")
+                .toURL().openConnection().apply { connectTimeout = 30_000; readTimeout = 120_000 }
+                .getInputStream().use { input -> temporary.outputStream().use(input::copyTo) }
+            val digest = MessageDigest.getInstance("SHA-256")
+            temporary.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+            }
+            val actual = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+            check(actual == faceEmbeddingModelSha256) { "SFace model checksum mismatch: $actual" }
+            Files.move(temporary.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            temporary.delete()
+        }
+    }
+}
+
+tasks.named("preBuild").configure { dependsOn(downloadSceneEmbeddingModel, downloadFaceEmbeddingModel) }
 
 android {
     namespace = "ai.sakana.aura.gallery"
@@ -168,6 +211,7 @@ dependencies {
     implementation(libs.coil)
     implementation(libs.mediapipe.tasks.vision)
     implementation(libs.mlkit.face.detection)
+    implementation(libs.onnxruntime.android)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

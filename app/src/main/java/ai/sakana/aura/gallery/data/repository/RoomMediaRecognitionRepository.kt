@@ -3,10 +3,12 @@ package ai.sakana.aura.gallery.data.repository
 import androidx.room.withTransaction
 import ai.sakana.aura.gallery.data.local.AuraGalleryDatabase
 import ai.sakana.aura.gallery.data.local.DetectedFaceEntity
+import ai.sakana.aura.gallery.data.local.FaceEmbeddingEntity
 import ai.sakana.aura.gallery.data.local.MediaRecognitionDao
 import ai.sakana.aura.gallery.data.local.SceneEmbeddingEntity
 import ai.sakana.aura.gallery.data.recognition.OnDeviceMediaAnalyzer
 import ai.sakana.aura.gallery.data.recognition.SceneVectorCodec
+import ai.sakana.aura.gallery.data.recognition.SFaceFaceEmbedder
 import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
 import ai.sakana.aura.gallery.domain.recognition.SceneCluster
@@ -75,7 +77,18 @@ class RoomMediaRecognitionRepository @Inject constructor(
                         dao.upsertSceneEmbedding(embedding)
                         dao.deleteFacesForMedia(item.contentUri)
                         if (result.detectedFaces.isNotEmpty()) {
-                            dao.insertFaces(result.detectedFaces.map(DetectedFace::toEntity))
+                            val faceIds = dao.insertFaces(result.detectedFaces.map(DetectedFace::toEntity))
+                            val faceEmbeddings = result.detectedFaces.zip(faceIds).mapNotNull { (face, faceId) ->
+                                face.embeddingVector?.let { vector ->
+                                    FaceEmbeddingEntity(
+                                        detectedFaceId = faceId,
+                                        modelVersion = SFaceFaceEmbedder.MODEL_VERSION,
+                                        vectorBytes = SceneVectorCodec.encode(vector),
+                                        dimensions = vector.size,
+                                    )
+                                }
+                            }
+                            if (faceEmbeddings.isNotEmpty()) dao.upsertFaceEmbeddings(faceEmbeddings)
                         }
                     }
                     processed++
@@ -98,6 +111,7 @@ class RoomMediaRecognitionRepository @Inject constructor(
         height,
         mimeType.orEmpty(),
         durationMillis,
+        SFaceFaceEmbedder.MODEL_VERSION,
     ).joinToString("|")
 }
 

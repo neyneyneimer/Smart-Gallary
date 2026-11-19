@@ -11,6 +11,8 @@ data class DetectedFace(
     val bottomNormalized: Float,
     val yawDegrees: Float,
     val rollDegrees: Float,
+    /** Unit-normalized on-device SFace features; null for missing landmarks or undersized faces. */
+    val embeddingVector: FloatArray? = null,
 )
 
 data class MediaAnalysisResult(

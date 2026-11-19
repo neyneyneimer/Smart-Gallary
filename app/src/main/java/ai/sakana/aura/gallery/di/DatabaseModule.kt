@@ -24,6 +24,7 @@ object DatabaseModule {
                 AuraGalleryDatabase.MIGRATION_3_4,
                 AuraGalleryDatabase.MIGRATION_4_5,
                 AuraGalleryDatabase.MIGRATION_5_6,
+                AuraGalleryDatabase.MIGRATION_6_7,
             )
             .build()
 

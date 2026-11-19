@@ -6,8 +6,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class, AiSetEntity::class, AiSetMembershipEntity::class],
-    version = 6,
+    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class, FaceEmbeddingEntity::class, AiSetEntity::class, AiSetMembershipEntity::class],
+    version = 7,
     exportSchema = true,
 )
 abstract class AuraGalleryDatabase : RoomDatabase() {
@@ -45,6 +45,15 @@ abstract class AuraGalleryDatabase : RoomDatabase() {
         val MIGRATION_3_4: Migration = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE media_items ADD COLUMN dateModifiedEpochMillis INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS face_embeddings (`detectedFaceId` INTEGER NOT NULL, `modelVersion` TEXT NOT NULL, `vectorBytes` BLOB NOT NULL, `dimensions` INTEGER NOT NULL, PRIMARY KEY(`detectedFaceId`), FOREIGN KEY(`detectedFaceId`) REFERENCES `detected_faces`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_face_embeddings_modelVersion ON face_embeddings(modelVersion)")
             }
         }
 

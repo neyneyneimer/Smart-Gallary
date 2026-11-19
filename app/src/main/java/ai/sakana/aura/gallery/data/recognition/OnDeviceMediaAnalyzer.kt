@@ -12,6 +12,8 @@ import ai.sakana.aura.gallery.domain.model.MediaItem
 import ai.sakana.aura.gallery.domain.recognition.DetectedFace
 import ai.sakana.aura.gallery.domain.recognition.MediaAnalysisResult
 import ai.sakana.aura.gallery.domain.recognition.SCENE_EMBEDDING_MODEL_VERSION
+import com.google.mlkit.vision.face.Face
+import com.google.mlkit.vision.face.FaceLandmark
 import com.google.android.gms.tasks.Tasks
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
@@ -33,6 +35,7 @@ import kotlin.math.sqrt
 @Singleton
 class OnDeviceMediaAnalyzer @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val faceEmbedder: SFaceFaceEmbedder,
 ) {
     private val inferenceLock = Any()
     private val embedder: ImageEmbedder by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -52,7 +55,7 @@ class OnDeviceMediaAnalyzer @Inject constructor(
     private val faceDetector: FaceDetector by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         val options = FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
-            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
             .enableTracking()
             .build()
@@ -80,6 +83,12 @@ class OnDeviceMediaAnalyzer @Inject constructor(
                     val right = (bounds.right.toFloat() / bitmap.width).coerceIn(0f, 1f)
                     val bottom = (bounds.bottom.toFloat() / bitmap.height).coerceIn(0f, 1f)
                     if (right > left && bottom > top) {
+                        val landmarks = faceLandmarks(face)
+                        val faceVector = if (bounds.width() >= MIN_FACE_EDGE && bounds.height() >= MIN_FACE_EDGE) {
+                            landmarks?.let { faceEmbedder.embed(bitmap, it) }
+                        } else {
+                            null
+                        }
                         faces += DetectedFace(
                             contentUri = item.contentUri,
                             frameTimeMillis = frameTimeMillis,
@@ -90,6 +99,7 @@ class OnDeviceMediaAnalyzer @Inject constructor(
                             bottomNormalized = bottom,
                             yawDegrees = face.headEulerAngleY,
                             rollDegrees = face.headEulerAngleZ,
+                            embeddingVector = faceVector,
                         )
                     }
                 }
@@ -98,6 +108,18 @@ class OnDeviceMediaAnalyzer @Inject constructor(
             }
         }
         return MediaAnalysisResult(sceneVector = averageAndNormalize(vectors), detectedFaces = faces)
+    }
+
+    private fun faceLandmarks(face: Face): FaceLandmarks? {
+        fun point(type: Int): FacePoint? = face.getLandmark(type)?.position?.let {
+            FacePoint(it.x.toDouble(), it.y.toDouble())
+        }
+        val leftEye = point(FaceLandmark.LEFT_EYE) ?: return null
+        val rightEye = point(FaceLandmark.RIGHT_EYE) ?: return null
+        val nose = point(FaceLandmark.NOSE_BASE) ?: return null
+        val leftMouth = point(FaceLandmark.MOUTH_LEFT) ?: return null
+        val rightMouth = point(FaceLandmark.MOUTH_RIGHT) ?: return null
+        return FaceLandmarks(leftEye, rightEye, nose, leftMouth, rightMouth)
     }
 
     private fun readImage(contentUri: String): Bitmap {
@@ -195,5 +217,6 @@ class OnDeviceMediaAnalyzer @Inject constructor(
     companion object {
         const val MODEL_VERSION = SCENE_EMBEDDING_MODEL_VERSION
         private const val MAX_FRAME_EDGE = 768
+        private const val MIN_FACE_EDGE = 48
     }
 }
