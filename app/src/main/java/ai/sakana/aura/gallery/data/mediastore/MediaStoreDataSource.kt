@@ -18,7 +18,7 @@ import javax.inject.Inject
 class MediaStoreDataSource @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    fun readMedia(): MediaStoreScanResult {
+    internal fun readMedia(): MediaStoreScanResult {
         val images = readCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "IMAGE")
         val videos = readCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "VIDEO")
         return MediaStoreScanResult(

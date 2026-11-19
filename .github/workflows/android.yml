@@ -33,7 +33,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Build and test
-        run: ./gradlew --no-daemon :app:check :app:testDebugUnitTest :app:assembleDebug
+        run: ./gradlew --no-daemon --stacktrace :app:check :app:testDebugUnitTest :app:assembleDebug
       - name: Verify and print exported Room schema v6
         run: |
           test -f app/schemas/ai.sakana.aura.gallery.data.local.AuraGalleryDatabase/6.json
