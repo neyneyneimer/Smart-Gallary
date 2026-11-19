@@ -13,6 +13,14 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+val releaseSigningValues = listOf(
+    "AURA_RELEASE_STORE_FILE",
+    "AURA_RELEASE_STORE_PASSWORD",
+    "AURA_RELEASE_KEY_ALIAS",
+    "AURA_RELEASE_KEY_PASSWORD",
+).associateWith { System.getenv(it)?.takeIf(String::isNotBlank) }
+val releaseSigningConfigured = releaseSigningValues.values.all { it != null }
+
 val sceneEmbeddingModel = layout.projectDirectory.file("src/main/assets/mobilenet_v3_small.tflite")
 val sceneEmbeddingModelSha256 = "bbbb4c51a55a53905af1daec995ca1aae355046f8839bb8c9f5ce9271394bc40"
 val downloadSceneEmbeddingModel by tasks.registering {
@@ -101,12 +109,27 @@ android {
         jvmTarget = "17"
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseSigningValues.getValue("AURA_RELEASE_STORE_FILE")!!)
+                storeType = System.getenv("AURA_RELEASE_STORE_TYPE")?.takeIf(String::isNotBlank) ?: "PKCS12"
+                storePassword = releaseSigningValues.getValue("AURA_RELEASE_STORE_PASSWORD")
+                keyAlias = releaseSigningValues.getValue("AURA_RELEASE_KEY_ALIAS")
+                keyPassword = releaseSigningValues.getValue("AURA_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
         }
         release {
             isMinifyEnabled = true
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
