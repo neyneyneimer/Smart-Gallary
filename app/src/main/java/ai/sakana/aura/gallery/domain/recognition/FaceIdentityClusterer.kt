@@ -190,7 +190,7 @@ class FaceIdentityClusterer(
         private const val MAX_NEIGHBORS_PER_BUCKET = 32
         private const val MIN_CLUSTER_MEDIA = 2
         private const val EPSILON = 1e-12
-        private const val GOLDEN_RATIO = 0x9E3779B97F4A7C15UL.toLong()
+        private val GOLDEN_RATIO = 0x9E3779B97F4A7C15UL.toLong()
 
         fun cosine(left: FloatArray, right: FloatArray): Float? {
             if (left.isEmpty() || left.size != right.size) return null
