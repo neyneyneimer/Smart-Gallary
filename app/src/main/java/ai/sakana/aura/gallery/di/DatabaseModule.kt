@@ -1,0 +1,42 @@
+package ai.sakana.aura.gallery.di
+
+import android.content.Context
+import androidx.room.Room
+import ai.sakana.aura.gallery.data.local.AuraGalleryDatabase
+import ai.sakana.aura.gallery.data.local.MediaItemDao
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+object DatabaseModule {
+    @Provides
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context): AuraGalleryDatabase =
+        Room.databaseBuilder(context, AuraGalleryDatabase::class.java, "aura_gallery.db")
+            .addMigrations(
+                AuraGalleryDatabase.MIGRATION_1_2,
+                AuraGalleryDatabase.MIGRATION_2_3,
+                AuraGalleryDatabase.MIGRATION_3_4,
+                AuraGalleryDatabase.MIGRATION_4_5,
+                AuraGalleryDatabase.MIGRATION_5_6,
+                AuraGalleryDatabase.MIGRATION_6_7,
+                AuraGalleryDatabase.MIGRATION_7_8,
+            )
+            .build()
+
+    @Provides
+    fun provideMediaItemDao(database: AuraGalleryDatabase): MediaItemDao = database.mediaItemDao()
+
+    @Provides
+    fun provideEditHistoryDao(database: AuraGalleryDatabase): ai.sakana.aura.gallery.data.local.EditHistoryDao =
+        database.editHistoryDao()
+
+    @Provides
+    fun provideMediaRecognitionDao(database: AuraGalleryDatabase): ai.sakana.aura.gallery.data.local.MediaRecognitionDao =
+        database.mediaRecognitionDao()
+}

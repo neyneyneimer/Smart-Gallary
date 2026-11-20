@@ -5,6 +5,12 @@
 **Supporting product brief:** `Aura_AI_Gallery_Rebuild_Specification.html`  
 **Implementation target:** Android, package/application ID `ai.sakana.aura.gallery`
 
+## User-priority override (19 November 2026)
+
+Aura's primary product purpose is on-device intelligent grouping of photos and videos into recurring scene/AI Sets and People groups. This takes precedence over cloud work. Recognition must keep scene vectors separate from face-identity embeddings; face detection is not identity recognition. Google Drive, MEGA, TeraBox and other providers are optional integrations and cannot be a dependency of the local gallery or local recognition.
+
+The implementation order is therefore: M1 real gallery → M2 on-device recognition and user-correctable AI Sets/People → M3 duplicate review and non-destructive editing → M4 optional cloud integrations → M5 hardening. The earlier v2.1 cloud/advanced milestone order is superseded by this explicit product-priority correction.
+
 ## 1. Product direction
 
 Aura AI Gallery is a phone-first Android gallery. The Android app is the product and the authoritative owner of the media catalogue. It must display real photos and videos from the device, preserve user actions, and make editing, duplicate detection and backup verifiably real.
@@ -42,6 +48,18 @@ The v2.1 reconciliation supersedes the earlier phase ordering. Real media ingest
 
 Use stable dependency releases only; pin versions centrally in the version catalog. The selected Kotlin/Hilt/KSP combination is a deliberate conservative baseline from v2.1 and must be validated by the actual CI build. Do not silently upgrade one part of the Android Gradle toolchain independently.
 
+
+### UI design-system baseline
+
+The Android UI implementation follows the user-supplied Aura_AI_Gallery_UI_Design_System.html. Preserve the design's semantic colour rule (amber means user action; spectral means model inference), square image geometry, hairline contact-sheet grid, three bundled typefaces, tabular mono metadata and five screen destinations. When a feature is not built, show a truthful empty/planned state instead of the reference mockup's illustrative sample metrics.
+
+### Verified implementation notes (19 November 2026)
+
+- Coil is pinned at 3.0.4 with Kotlin 2.0.21. Coil 3.3.0 resolved to Kotlin 2.2 metadata and did not compile with the approved Kotlin 2.0.21 compiler.
+- Hilt 2.52 continues to use KSP 2.0.21-1.0.28. Room 2.8.5 schema processing is routed through KAPT for now: Room's release KSP task failed with an AbstractMethodError in the Room schema serializer/classloader path under the pinned Kotlin compiler. KAPT successfully generates both Room implementation classes and the version 1 schema while Hilt stays on KSP.
+- The Kotlin KAPT plugin warns that it falls back to language version 1.9 while generating Room stubs from Kotlin 2.0 sources. Current Room entity/DAO declarations use syntax supported by that stub path; re-evaluate this exception during the next Kotlin/KSP toolchain upgrade. Do not claim schema export is verified from KSP.
+- The first integrated build passed :app:testDebugUnitTest, :app:check, :app:assembleDebug and :app:assembleRelease locally. The build host currently reports JDK 21; JDK 17 GitHub Actions validation and Android device/API-level runtime tests remain outstanding.
+
 ## 4. Architecture and data rules
 
 Use a simple Clean Architecture/MVVM shape inside the single app module until M4:
@@ -74,6 +92,16 @@ Prefer the Android Photo Picker for user-selected imports because it avoids broa
 
 Never assume that a permission grant means the app can see the entire library. No private media, tokens, API keys, OAuth refresh tokens or signing credentials may be written to logs or committed.
 
+
+### Recognition implementation status (19 November 2026)
+
+- Initial scene feature model: MediaPipe Image Embedder MobileNet V3 Small float32, pinned asset SHA-256 `bbbb4c51a55a53905af1daec995ca1aae355046f8839bb8c9f5ce9271394bc40`. The build downloads the asset and verifies its checksum before packaging; the binary asset is not committed.
+- The MobileNet V3 family is trained on ImageNet. Current vectors are broad visual similarity features, so generated clusters are unconfirmed suggestions—not proof of the same room, outfit, composition or AI Set. A labelled target-gallery evaluation and likely a stronger scene-specific model are still required.
+- Videos are sampled at 18%, 50% and 82% of duration. The frame vectors are averaged/normalized; face boxes retain their sampled timestamps.
+- ML Kit Face Detection stores normalized face boxes only. It does not recognize people. A licensed face-identity model, aligned face crops, embeddings and measured clustering are required before People identities or couples can be claimed.
+- Scene vectors and face detections are stored independently in Room schema v4; user-confirmed AI Sets and memberships are added in schema v5. The source fingerprint includes model version, URI, size, capture date, modified date, dimensions, MIME type and duration.
+- Android runtime/device acceptance is still outstanding. The available Android host had no free device slots during this implementation.
+
 ## 6. Milestones and release gates
 
 The detailed task checklist and status live in [ROADMAP.md](../ROADMAP.md).
@@ -82,9 +110,10 @@ The detailed task checklist and status live in [ROADMAP.md](../ROADMAP.md).
 |---|---|---|
 | M0 — Android build foundation | Clean project, wrapper, manifest/resources, Hilt application, CI debug APK | Fresh CI build succeeds; APK artifact installs |
 | M1 — Real gallery | MediaStore + Photo Picker, real URIs, Coil grid, ViewModel/repository, persistent favourites, permission/partial-access handling | 1,000+ items scroll without stutter/OOM; favourites survive force-stop; API 33/34/36 and partial-access flows work |
-| M2 — Dedupe, editing and export | SHA-256, dHash + banded candidate search, clustering, non-destructive ColorMatrix edits and MediaStore export | Exact and recompressed copies are distinguished; edited output appears in system gallery; revert restores original pixels |
-| M3 — Cloud backup | OAuth, real provider upload, per-item state machine, WorkManager constraints/retry/resume | Interrupted sync resumes without duplicate upload; offline queue drains on Wi-Fi; downloaded Drive file matches source bytes |
-| M4 — Advanced features and hardening | Licensed face embeddings, FTS4 search, storage optimizer, module extraction, broader tests, R8 and i18n | Each feature has a real implementation and tests; modules are extracted only when stable |
+| M2 — On-device recognition and AI Sets | Scene embeddings, video-frame sampling, independent face detection/identity pipeline, manual group correction | Recurring setups group across dates; People identity is separately validated; user can correct suggestions; all analysis stays on device |
+| M3 — Dedupe, editing and export | SHA-256, dHash + banded candidate search, clustering, non-destructive ColorMatrix edits and MediaStore export | Exact and recompressed copies are distinguished; edited output appears in system gallery; revert restores original pixels |
+| M4 — Optional cloud integrations | Provider-neutral import/export and optional selective sync for connected accounts | Cloud is optional; local gallery and recognition work fully with no accounts connected |
+| M5 — Hardening and advanced features | FTS4 search, storage optimizer, module extraction, broader tests, R8 and i18n | Each feature has a real implementation and tests; modules are extracted only when stable |
 
 No milestone is complete because a screen exists or a progress indicator moves. Completion requires its stated acceptance evidence.
 
@@ -119,3 +148,11 @@ Out of scope for the first three milestones: a web gallery, a second backend-own
 
 ---
 This plan implements the corrected priority and engineering constraints from Spec v2.1. Where the older rebuild brief conflicts with v2.1 (notably build order, early multi-module extraction, permissions and face recognition), v2.1 governs.
+
+
+### M2 runtime regression note — 2026-11-19
+
+- MediaPipe ImageEmbedder initialization on Android 15 aborted in JNI when the minified debug APK caused Protobuf Lite `GeneratedMessageLite` default-instance lookup to fall through to `Unsafe.allocateInstance` for `com.google.protobuf.Any`.
+- Debug minification is now disabled (release minification remains enabled); Protobuf Lite message classes extending `GeneratedMessageLite` are kept for reflective/default-instance registration.
+- Emulator smoke test after fix: 5 local media items analyzed, 0 failures; suggestion saved and named; saved AI Set renamed; individual member removal verified (3→2); second set created and merged into the first (2 sets→1; duplicate memberships deduplicated); app process restarted and persisted set/name/members remained visible.
+- This test confirms runtime operation on synthetic emulator media, not scene-recognition precision/recall or general identity recognition.

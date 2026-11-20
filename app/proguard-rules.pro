@@ -1,21 +1,11 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Project-specific R8 rules.
+# Add keep rules only when a library or reflection-based feature requires them.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# MediaPipe Tasks reflects over generated proto fields while constructing its task logger.
+# Keep the generated metadata intact in minified debug and release builds.
+-keep class com.google.mediapipe.proto.** { *; }
+-keepclassmembers class com.google.mediapipe.proto.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Protobuf Lite uses reflection to discover GeneratedMessageLite default instances and fields.
+# Keep generated messages intact so their static default-instance registration survives R8.
+-keep class * extends com.google.protobuf.GeneratedMessageLite { *; }

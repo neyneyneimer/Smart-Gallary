@@ -8,47 +8,78 @@
 
 - [x] Preserve the previous AI Studio/web repository state on `legacy-reference/ai-studio-web`.
 - [x] Commit the approved implementation plan to `main`.
-- [ ] Recreate the verified Android foundation inside the Git repository.
+- [x] Recreate the clean Android foundation inside the Android rebuild branch; added a launcher Activity and Compose gallery entry point.
 - [ ] Complete M0 and make the clean Android branch build from a fresh checkout.
 
 **Important:** A clean Android foundation was previously built in an isolated ParallelSandbox workspace on 18 November 2026 (`assembleDebug`, `check` and `assembleRelease` succeeded there). That source was not pushed to GitHub. It is prior test evidence only; it does not count as M0 complete until the source is committed and the GitHub build is verified.
 
+## Priority correction — primary intelligence feature
+
+**Product rule:** Aura's primary purpose is to recognize related media and group it into People and AI Sets. Multi-cloud import/export/sync is optional and must not block local recognition or gallery use.
+
+## M2 — On-device recognition and AI Sets
+
+**Status: In progress — on-device scene suggestions, face-location detection and persistent user-confirmed AI Sets are implemented; model validation and person identity grouping remain incomplete.**
+
+- [x] Bundle a pinned MediaPipe Image Embedder MobileNet V3 Small float32 model at build time; verify the downloaded model SHA-256 before packaging.
+- [x] Run scene feature extraction entirely on-device; no image, video, embedding or face data is uploaded.
+- [x] Sample video frames at 18%, 50% and 82% of duration and aggregate their normalized scene feature vectors.
+- [x] Correct photo EXIF orientation before analysis and bound decoded image/frame dimensions.
+- [x] Detect face locations on-device with bundled ML Kit Face Detection; persist normalized boxes and video frame timestamps separately from scene vectors.
+- [x] Persist scene vectors, model version and source fingerprint in Room; add explicit v2→v3→v4 migrations.
+- [x] Reuse cached embeddings only when both model version and source fingerprint match; include MediaStore modified time in the fingerprint.
+- [x] Cluster compatible vectors with cosine similarity, LSH candidate search and deterministic union-find grouping; regression test a 300-item candidate bucket.
+- [x] Connect People and AI Sets screens to real scan results and show honest progress/failure states.
+- [x] Save a reviewed scene suggestion as a persistent, user-named AI Set.
+- [x] Persist AI Set memberships independently of scene embeddings; add Room v4→v5 migration.
+- [x] Support manual AI Set rename, merge, delete and removal of individual members (split/correction).
+- [ ] Evaluate scene-similarity precision/recall against a labelled on-device set of recurring rooms, outfits, backgrounds and compositions; tune the threshold before treating suggestions as final AI Sets.
+- [ ] Add user-confirmed AI Sets with persistent names and manual merge, split, rename and membership editing.
+- [ ] Select and license a face-identity embedding model; ML Kit detection alone must never be represented as person recognition.
+- [ ] Implement per-face embeddings, normalization, similarity clustering and manually editable person identities only after model licensing and validation.
+- [ ] Add couple/person-combination grouping while keeping identities independent from scene groups.
+- [ ] Validate recognition on a real 2,000+ item photo/video library, including cross-date and cross-video matches, memory use and scan interruption/retry.
+
+**M2 exit criteria:** AI Set suggestions reliably group recurring visual setups across different dates while keeping person identity independent. People groups are based on a licensed and validated face embedding model—not face boxes or detector tracking IDs. Users can review and manually correct groups. All pixel processing and inference remains on-device.
+
 ## M0 — Android build foundation
 
-**Status: Not complete**
+**Status: In progress — local debug/release build gates pass; fresh GitHub Actions JDK 17 run and device installation are still pending.**
 
-- [ ] Create the clean Android implementation branch `android/rebuild-m1`; keep the legacy web source on its reference branch.
-- [ ] Set root project name to `AuraGallery` and application ID/namespace to `ai.sakana.aura.gallery`.
-- [ ] Add the complete Gradle 8.13 wrapper and pin AGP 8.13.0 / JDK 17 / compileSdk 36 / targetSdk 36 / minSdk 26.
-- [ ] Pin Kotlin 2.0.21 and validate the complete toolchain combination in CI.
-- [ ] Add a stable dependency version catalog; use stable releases only.
-- [ ] Add the single `:app` module, `@HiltAndroidApp` Application, and working Hilt/KSP wiring.
-- [ ] Add all referenced manifest resources: theme, backup rules, data-extraction rules, launcher icons and ProGuard rules.
-- [ ] Configure Timber and baseline test dependencies.
-- [ ] Add GitHub Actions workflow for wrapper validation, `:app:check`, `:app:assembleDebug` and APK artifact upload.
-- [ ] Verify a fresh checkout builds without relying on globally installed Gradle or local-only files.
+- [x] Create the clean Android implementation branch `android/rebuild-m1`; keep the legacy web source on its reference branch.
+- [x] Set root project name to `AuraGallery` and application ID/namespace to `ai.sakana.aura.gallery`.
+- [x] Add the complete Gradle 8.13 wrapper and pin AGP 8.13.0 / JDK 17 target / compileSdk 36 / targetSdk 36 / minSdk 26.
+- [ ] Pin Kotlin 2.0.21; local debug/release compilation passes on the available JDK 21 host. Validate the complete JDK 17 toolchain combination in CI.
+- [x] Add a stable dependency version catalog; use stable releases only. Coil is pinned to 3.0.4 for Kotlin 2.0.21 metadata compatibility.
+- [x] Add the single `:app` module, `@HiltAndroidApp` Application, and working Hilt/KSP wiring. Room 2.8.5 uses KAPT for schema generation due the recorded KSP serializer exception.
+- [x] Add all referenced manifest resources: theme, backup rules, data-extraction rules, adaptive launcher icons and ProGuard rules.
+- [x] Configure Timber and baseline unit/instrumentation test dependencies.
+- [x] Add GitHub Actions workflow for wrapper validation, `:app:check`, `:app:testDebugUnitTest`, `:app:assembleDebug` and APK artifact upload.
+- [x] Build the clean Android checkout with the committed Gradle wrapper; verify the GitHub Actions run on JDK 17 after push.
 
 **M0 exit criteria:** GitHub Actions completes successfully from a fresh checkout and publishes an installable debug APK artifact. No missing resource, manifest, wrapper or dependency-injection errors.
 
 ## M1 — Real gallery on the phone
 
-**Status: Not started**
+**Status: In progress — first real-gallery vertical slice implemented; device and scale acceptance tests remain pending.**
 
-- [ ] Implement MediaStore discovery for real device images; do not use drawable/sample media as gallery content.
-- [ ] Store real `content://` URIs and stable MediaStore IDs.
-- [ ] Add Room entities, DAO and database with one-shot reads, observation Flows and indices for date/hash/tag lookups.
-- [ ] Export Room schemas and establish a non-destructive, versioned migration policy.
-- [ ] Use persisted epoch-millisecond `Long` timestamps.
-- [ ] Add repository interface/implementation and `ObserveMediaUseCase`; feature/UI code must not depend on concrete data classes.
-- [ ] Build a Compose gallery grid with Coil 3 and a configured `SingletonImageLoader`.
-- [ ] Add Photo Picker import using `PickMultipleVisualMedia` as the no-permission path.
-- [ ] Add full-library permission handling for API 33 and API 34+, including `READ_MEDIA_VISUAL_USER_SELECTED` and partial-access states.
-- [ ] Handle permission denial, revoked access, empty libraries and inaccessible URIs without crashing.
-- [ ] Add favourite toggle and persist its state in Room.
-- [ ] Add loading, empty, permission-required and recoverable-error UI states.
-- [ ] Add focused tests for media mapping, repository behavior, permission state mapping and favourite persistence.
-- [ ] Verify on API 33, 34 and 36, including partial photo selection.
-- [ ] Run a 1,000+ item scrolling/memory test on a real device or representative emulator.
+- [x] Implement MediaStore discovery for real device images; do not use drawable/sample media as gallery content.
+- [x] Store real `content://` URIs and stable MediaStore IDs.
+- [x] Add Room entities, DAO and database with one-shot reads, observation Flows and M1 URI/date/favourite indices. Hash/tag indices arrive with their later feature data.
+- [x] Export Room schema version 1 through KAPT and keep destructive migration fallback disabled; add explicit migrations with each schema change.
+- [x] Use persisted epoch-millisecond `Long` timestamps.
+- [x] Add repository interface/implementation and `ObserveMediaUseCase`; feature/UI code depends on domain models/contracts.
+- [x] Build a Compose gallery grid with Coil 3 and a configured `SingletonImageLoader`.
+- [x] Add Photo Picker import using `PickMultipleVisualMedia` as the no-permission path.
+- [x] Add full-library permission handling for API 33 and API 34+, including `READ_MEDIA_VISUAL_USER_SELECTED` and partial-access UI.
+- [x] Handle permission denial, revoked access and empty libraries without crashing; cached rows are hidden after all media grants are revoked. Invalid/revoked URI coverage remains pending.
+- [x] Add favourite toggle and persist its state in Room.
+- [x] Add loading, empty, permission-required, partial-access and recoverable-error UI states.
+- [x] Apply the supplied five-screen UI design system: graphite/safelight palette, bundled licensed typefaces, square contact-sheet grid, hairline controls, localized metadata and the Library / People / Edit / Optimize / Settings destinations.
+- [ ] Add focused tests for media mapping, repository refresh behavior and favourite persistence. Six permission-policy unit tests currently pass.
+- [x] Exercise Android 15 / API 35 on a Pixel 9 emulator: limited photo selection, full photo/video grants, denial, repeated denial to app settings, full revocation and re-grant.
+- [ ] Verify on API 33, 34 and 36, including API 34 multi-select/revoke and API 36 background revocation.
+- [x] Run a 1,001-item scrolling/memory benchmark on the API 35 emulator; measured results are recorded below, and scroll/cold-start targets did not pass.
 
 **M1 exit criteria:**
 - Real device photos display; no placeholder/drawable-backed gallery records.
@@ -57,9 +88,9 @@
 - API 33, 34 and 36 permission paths work; partial-access users still see selected media.
 - Photo Picker imports continue working without broad library permission.
 
-## M2 — Real deduplication, editing and export
+## M3 — Real deduplication, editing and export
 
-**Status: Not started**
+**Status: Not started — follows the primary recognition milestone.**
 
 - [ ] Implement SHA-256 over file bytes for exact-duplicate identity.
 - [ ] Implement 64-bit dHash over decoded image content.
@@ -73,15 +104,15 @@
 - [ ] Export edited images to MediaStore under `Pictures/AuraGallery`, using `IS_PENDING` while writing.
 - [ ] Preserve original pixels and prove revert/export behavior through tests.
 
-**M2 exit criteria:**
+**M3 exit criteria:**
 - Two renamed copies of the same bytes are flagged as exact duplicates.
 - A recompressed 80%-quality copy is identified as similar, not exact.
 - Edited output is visible in the system gallery app.
 - Revert/export does not overwrite the original; reverting restores original pixels.
 
-## M3 — Real cloud backup
+## M4 — Optional cloud import, export and backup
 
-**Status: Not started**
+**Status: Optional / not started — this must not delay local recognition.**
 
 - [ ] Define provider-neutral cloud repository interface and item-level backup states.
 - [ ] Implement real OAuth and upload for Google Drive API v3.
@@ -100,15 +131,11 @@
 - A file downloaded from Drive is byte-for-byte identical to the phone source.
 - Provider errors are visible and recoverable; no simulated delay-loop is presented as backup.
 
-## M4 — Advanced features and production hardening
+## M5 — Advanced features and production hardening
 
 **Status: Not started; intentionally deferred**
 
-- [ ] Add on-device ML Kit face detection and clearly label it as detection only.
-- [ ] Obtain and license a real FaceNet/MobileFaceNet TFLite embedding model asset.
-- [ ] Implement face crop/normalization, embeddings, cosine similarity and clustering only after the model is present and validated.
-- [ ] Add manual person labels and cluster-centroid updates; do not infer a person's identity.
-- [ ] Add Room FTS4 search across title, face tags, attire, environment and lighting.
+- [ ] Add Room FTS4 search across title, manual person labels, attire, environment and lighting.
 - [ ] Add storage optimizer insights for large files, similar photos, screenshots and blurred photos.
 - [ ] Add safe bulk actions with undo.
 - [ ] Extract stable code into modules only when an actual seam and measurable benefit exist.
@@ -117,7 +144,7 @@
 - [ ] Add localization/internationalization and accessibility review.
 - [ ] Run final dependency, security, performance, memory and install/update checks.
 
-**M4 exit criteria:** Each shipped feature has a real implementation, user-visible failure states and tests. Face grouping is not marked complete without the licensed model asset and measured clustering behavior.
+**M5 exit criteria:** Each shipped feature has a real implementation, user-visible failure states and tests. Recognition completion still requires the M2 model, device and user-correction acceptance gates.
 
 ## Cross-milestone quality gates
 
@@ -129,11 +156,40 @@
 - [ ] Keep `README.md`, this roadmap and the project plan aligned with actual repository state.
 - [ ] Push completed changes and verify the remote branch/commit before reporting completion.
 
+## Implementation notes and current blockers
+
+- Room 2.8.5 KSP release processing hits a Kotlin compiler classloader serializer AbstractMethodError with the pinned Kotlin 2.0.21 toolchain. Room processing now uses KAPT, while Hilt remains on KSP. KAPT reports a Kotlin language 1.9 fallback for stubs; keep this visible and revisit on the next toolchain upgrade. Room schema export through KAPT has been verified.
+- Coil 3.3.0 requires Kotlin 2.2 metadata and failed against Kotlin 2.0.21. Coil 3.0.4 is pinned to retain the v2.1 Kotlin baseline.
+- The local build sandbox runs JDK 21; GitHub Actions remains the JDK 17 CI gate. A Pixel 9 Android 15 / API 35 emulator is now available through ParallelSandbox. The Android host exposed only API 35, so API 33/34/36 runtime acceptance remains open.
+
+## M1 — Performance Benchmarks
+
+The app logs local Timber events prefixed with `PERF metric=`. These are measurement points, not evidence that a target has passed.
+
+| Measure | Acceptance target | Instrumentation | Verified result |
+|---|---:|---|---|
+| Cold start to first visible gallery content | under 2 seconds | Process start to first non-empty Library composition | 2,025 ms — **missed** by 25 ms |
+| MediaStore load for 1,001 images | under 5 seconds | `incremental_media_store_refresh`, item-count delta 0→1,001 | 1,063 ms — **within target**; first query was 703 ms but returned 0 rows |
+| Incremental refresh (10 new items) | under 500 ms | `incremental_media_store_refresh` duration and item-count delta | Not isolated; 1,001-item load measured instead |
+| Scroll frame timing | at least 95% of sampled frames within 16 ms | Choreographer intervals during eight Library grid swipe batches | 0.0% within 16 ms across 92 sampled frame callbacks — **failed** |
+| Heap at rest | under 128 MB | Runtime heap after first gallery content and scan | 14.1 MB used heap — **within target** |
+| Peak heap during scroll | under 256 MB | Runtime heap samples while Library grid scrolls | 9.56 MB peak used heap — **within target** |
+
+Collect measurements with `adb logcat | grep "PERF metric="`. API 33/34/36 runtime permission acceptance and the 1,000+ item benchmark still require physical devices or representative emulators; no measurements are inferred from CI.
+
+- 2026-11-20: Account 1 hardening follow-up — repository Room operations now report SQLiteException to a shared safe UI error state; media observation errors no longer crash the collector; repeated permission denial routes to Android app settings; fatal crashes persist a minimal marker and show a generic recovery dialog on next launch.
+- 2026-11-20: Android 15/API35 Pixel 9 emulator smoke test found and fixed duplicate virtual-album LazyGrid keys and stale cached media rendered after all permissions were revoked. Partial access, full access, denial/settings routing, revocation and re-grant passed. Added regression tests. 1,001-photo benchmark: 2,025 ms cold start, 1,063 ms refresh to load 1,001 rows, 14.1 MB used heap after scan, 9.56 MB peak used heap during scroll; scroll frame metric 0.0% within 16 ms and cold start missed target. API 33/34/36 remain pending.
+
 ## Change log
 
 | Date | Change |
 |---|---|
+| 2026-11-19 | M2 runtime verification: fixed MediaPipe Tasks JNI abort by disabling R8 for debug and preserving Protobuf Lite GeneratedMessageLite classes in minified builds. Android 15 emulator passed 5-item local scene analysis (0 failures), save/name, rename, remove member (3→2), merge (2 sets→1 set, 3 unique members), and app-restart persistence. Scene precision/recall evaluation and person identity embeddings remain open. |
+| 2026-11-19 | M2 recognition foundation: checksum-pinned local MobileNet V3 Image Embedder, sampled video-frame scene vectors, separate ML Kit face-location detections, Room v4 persistence/migrations, similarity suggestions in People/AI Sets screens, and deterministic LSH clustering tests. Scene suggestions and face detection are not the same as validated scene sets or person identity. |
+| 2026-11-19 | M2 user-managed AI Sets: Room v5 saved sets and membership records; save reviewed suggestions, rename, merge, delete, and remove individual media members. Domain regression tests cover name validation, duplicate membership, merge ordering and split behavior. Scene-precision evaluation and face identity embeddings remain open. |
 | 2026-11-19 | Established v2.1 milestone order; created legacy reference branch; added project plan. |
+| 2026-11-19 | Applied the uploaded Aura UI design system to Compose, bundled Instrument Serif/Manrope/JetBrains Mono with OFL licences, added all five destinations and a non-destructive tone preview. Unimplemented M2–M4 data is clearly labelled rather than shown as mock metrics. |
+| 2026-11-19 | Created android/rebuild-m1; added launcher app, MediaStore/Photo Picker repository, Room favourites, permission-aware Compose grid, schema v1, six permission tests and Android CI workflow. Local debug/release/check/unit-test build passed on JDK 21. Device/API and JDK 17 CI gates remain pending. |
 
 ## Status vocabulary
 
