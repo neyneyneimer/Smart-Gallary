@@ -2,7 +2,15 @@ package ai.sakana.aura.gallery.domain.grouping
 
 import ai.sakana.aura.gallery.domain.model.MediaItem
 
-data class MediaAlbum(val title: String, val items: List<MediaItem>, val isVirtual: Boolean = false)
+data class MediaAlbum(val title: String, val items: List<MediaItem>, val isVirtual: Boolean = false) {
+    val stableKey: String
+        get() = if (isVirtual) {
+            "virtual:$title"
+        } else {
+            val folderPath = items.firstOrNull()?.relativePath?.trim('/')?.ifBlank { title } ?: title
+            "folder:$folderPath"
+        }
+}
 
 object GalleryCollectionGrouping {
     fun buildAlbums(items: List<MediaItem>): List<MediaAlbum> {

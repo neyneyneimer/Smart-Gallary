@@ -13,6 +13,11 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+val githubRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toLongOrNull()?.takeIf { it > 0L }
+val resolvedRunNumber = githubRunNumber ?: 1L
+val generatedVersionCode = (resolvedRunNumber.coerceAtMost(Int.MAX_VALUE.toLong() - 1_000L) + 1_000L).toInt()
+val generatedVersionName = githubRunNumber?.let { "0.1.0-$it" } ?: "0.1.0-dev"
+
 val releaseSigningValues = listOf(
     "AURA_RELEASE_STORE_FILE",
     "AURA_RELEASE_STORE_PASSWORD",
@@ -128,8 +133,8 @@ android {
         applicationId = "ai.sakana.aura.gallery"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = generatedVersionCode
+        versionName = generatedVersionName
 
         ndk {
             abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -233,4 +238,13 @@ dependencies {
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.espresso.core)
     debugImplementation(libs.compose.ui.tooling)
+}
+
+tasks.register("printResolvedVersion") {
+    group = "verification"
+    description = "Print the generated Android version values for CI verification."
+    doLast {
+        println("AURA_VERSION_CODE=$generatedVersionCode")
+        println("AURA_VERSION_NAME=$generatedVersionName")
+    }
 }

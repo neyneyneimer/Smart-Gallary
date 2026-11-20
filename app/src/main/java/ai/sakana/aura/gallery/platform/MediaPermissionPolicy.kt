@@ -16,6 +16,17 @@ object MediaPermissionPolicy {
         else -> listOf(READ_EXTERNAL_STORAGE)
     }
 
+    /** A denied permission with no rationale after a prior request should route to Settings. */
+    fun shouldOpenAppSettings(
+        hasRequestedBefore: Boolean,
+        deniedPermissions: Set<String>,
+        permissionsWithRationale: Set<String>,
+    ): Boolean = hasRequestedBefore && deniedPermissions.isNotEmpty() &&
+        deniedPermissions.none { it in permissionsWithRationale }
+
+    /** Cached device-media rows must never be rendered after all media permissions are revoked. */
+    fun canDisplayCachedMedia(accessLevel: MediaAccessLevel): Boolean = accessLevel != MediaAccessLevel.DENIED
+
     fun resolveAccess(apiLevel: Int, grantedPermissions: Set<String>): MediaAccessLevel {
         if (apiLevel < 33) {
             return if (READ_EXTERNAL_STORAGE in grantedPermissions) MediaAccessLevel.FULL else MediaAccessLevel.DENIED
