@@ -13,6 +13,8 @@ import androidx.room.PrimaryKey
         Index(value = ["isFavorite", "isAvailable"]),
         Index(value = ["mediaType"]),
         Index(value = ["sourceType", "mediaType"]),
+        Index(value = ["sha256Hash"], name = "index_media_items_sha256Hash"),
+        Index(value = ["perceptualHash"], name = "index_media_items_perceptualHash"),
     ],
 )
 data class MediaItemEntity(
@@ -36,4 +38,6 @@ data class MediaItemEntity(
     @ColumnInfo(defaultValue = "0") val isTrashed: Boolean = false,
     @ColumnInfo(defaultValue = "0") val trashedAtEpochMillis: Long = 0L,
     @ColumnInfo(defaultValue = "0") val dateModifiedEpochMillis: Long = 0L,
+    val sha256Hash: String? = null,
+    val perceptualHash: Long? = null,
 )

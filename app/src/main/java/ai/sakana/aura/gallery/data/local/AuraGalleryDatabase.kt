@@ -6,15 +6,33 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class, FaceEmbeddingEntity::class, AiSetEntity::class, AiSetMembershipEntity::class],
-    version = 7,
+    entities = [MediaItemEntity::class, SceneEmbeddingEntity::class, DetectedFaceEntity::class, FaceEmbeddingEntity::class, AiSetEntity::class, AiSetMembershipEntity::class, PersonClusterEntity::class, EditHistoryEntity::class],
+    version = 8,
     exportSchema = true,
 )
 abstract class AuraGalleryDatabase : RoomDatabase() {
     abstract fun mediaItemDao(): MediaItemDao
     abstract fun mediaRecognitionDao(): MediaRecognitionDao
+    abstract fun editHistoryDao(): EditHistoryDao
 
     companion object {
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE media_items ADD COLUMN sha256Hash TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE media_items ADD COLUMN perceptualHash INTEGER DEFAULT NULL")
+                db.execSQL("CREATE INDEX index_media_items_sha256Hash ON media_items(sha256Hash)")
+                db.execSQL("CREATE INDEX index_media_items_perceptualHash ON media_items(perceptualHash)")
+                db.execSQL("ALTER TABLE detected_faces ADD COLUMN personClusterId INTEGER DEFAULT NULL")
+                db.execSQL("CREATE INDEX index_detected_faces_personClusterId ON detected_faces(personClusterId)")
+                db.execSQL("ALTER TABLE scene_embeddings ADD COLUMN isVideoFrame INTEGER DEFAULT 0 NOT NULL")
+                db.execSQL("ALTER TABLE scene_embeddings ADD COLUMN videoUri TEXT DEFAULT NULL")
+                db.execSQL("CREATE INDEX index_scene_embeddings_videoUri ON scene_embeddings(videoUri)")
+                db.execSQL("CREATE TABLE person_clusters (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, representativeFaceId INTEGER NOT NULL, confidence REAL NOT NULL, memberCount INTEGER NOT NULL DEFAULT 1, createdAt INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX index_person_clusters_representative ON person_clusters(representativeFaceId)")
+                db.execSQL("CREATE TABLE edit_history (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, contentUri TEXT NOT NULL, name TEXT NOT NULL, brightness REAL NOT NULL DEFAULT 0, contrast REAL NOT NULL DEFAULT 0, saturation REAL NOT NULL DEFAULT 0, warmth REAL NOT NULL DEFAULT 0, appliedAt INTEGER NOT NULL, isActive INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(contentUri) REFERENCES media_items(contentUri) ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX index_edit_history_contentUri ON edit_history(contentUri)")
+            }
+        }
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE media_items ADD COLUMN mediaType TEXT NOT NULL DEFAULT 'IMAGE'")
