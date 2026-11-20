@@ -97,6 +97,13 @@ class MediaPermissionPolicyTest {
     }
 
     @Test
+    fun `revoked access hides cached media while partial and full grants may display it`() {
+        assertEquals(false, MediaPermissionPolicy.canDisplayCachedMedia(MediaAccessLevel.DENIED))
+        assertEquals(true, MediaPermissionPolicy.canDisplayCachedMedia(MediaAccessLevel.PARTIAL))
+        assertEquals(true, MediaPermissionPolicy.canDisplayCachedMedia(MediaAccessLevel.FULL))
+    }
+
+    @Test
     fun `first permission denial does not route directly to settings`() {
         assertEquals(
             false,

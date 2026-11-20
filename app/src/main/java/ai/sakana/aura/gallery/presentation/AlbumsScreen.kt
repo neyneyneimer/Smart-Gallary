@@ -110,7 +110,7 @@ internal fun AlbumsScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            items(albums, key = { album -> (if (album.isVirtual) "virtual:" else "folder:") + (album.items.firstOrNull()?.relativePath?.ifBlank { album.title } ?: album.title) }) { album ->
+            items(albums, key = { album -> album.stableKey }) { album ->
                 Column(Modifier.clickable { onOpenAlbum(album) }) {
                     Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(3.dp)).background(AuraTokens.Surface1)) {
                         album.items.firstOrNull()?.let { cover ->

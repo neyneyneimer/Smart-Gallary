@@ -104,6 +104,8 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
     var permissionPermanentlyDenied by rememberSaveable { mutableStateOf(false) }
     val items by viewModel.mediaItems.collectAsState()
     val trashedItems by viewModel.trashedItems.collectAsState()
+    val visibleItems = if (MediaPermissionPolicy.canDisplayCachedMedia(access)) items else emptyList()
+    val visibleTrashedItems = if (MediaPermissionPolicy.canDisplayCachedMedia(access)) trashedItems else emptyList()
     val refreshing by viewModel.isRefreshing.collectAsState()
     val error by viewModel.errorMessage.collectAsState()
     val sceneClusters by viewModel.sceneClusters.collectAsState()
@@ -159,7 +161,18 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(access) {
-        if (access != MediaAccessLevel.DENIED) viewModel.refresh()
+        if (access != MediaAccessLevel.DENIED) {
+            viewModel.refresh()
+        } else {
+            // Keep the local catalogue for a possible future re-grant, but never render cached
+            // device-media metadata or stale screens after Android revokes every media grant.
+            selected = emptySet()
+            activeAlbum = null
+            showRecentlyDeleted = false
+            viewing = null
+            editing = null
+            pendingTrashUris = null
+        }
     }
 
     val chooseMedia = {
@@ -220,8 +233,8 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
         BackHandler { viewing = null }
         ScreenErrorBoundary(screenName = "Media viewer", onRetry = { viewing = null }) {
             MediaViewerScreen(
-            item = items.firstOrNull { it.contentUri == viewing!!.contentUri }
-                ?: trashedItems.firstOrNull { it.contentUri == viewing!!.contentUri }
+            item = visibleItems.firstOrNull { it.contentUri == viewing!!.contentUri }
+                ?: visibleTrashedItems.firstOrNull { it.contentUri == viewing!!.contentUri }
                 ?: viewing!!,
             onBack = { viewing = null },
             onShare = { shareMedia(context, listOf(viewing!!)) },
@@ -237,7 +250,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
         BackHandler { showRecentlyDeleted = false }
         ScreenErrorBoundary(screenName = "Recently deleted", onRetry = { showRecentlyDeleted = false }) {
             RecentlyDeletedScreen(
-            items = trashedItems,
+            items = visibleTrashedItems,
             onBack = { showRecentlyDeleted = false },
             onRestore = viewModel::restoreFromTrash,
             onOpen = { viewing = it },
@@ -271,7 +284,7 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
             when (destination) {
                 Destination.PHOTOS -> ScreenErrorBoundary(screenName = "Library", onRetry = viewModel::refresh) {
                     LibraryScreen(
-                    items = items,
+                    items = visibleItems,
                     access = access,
                     accessPermanentlyDenied = permissionPermanentlyDenied,
                     refreshing = refreshing,
@@ -298,10 +311,10 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                 }
                 Destination.ALBUMS -> ScreenErrorBoundary(screenName = "Albums", errorMessage = error, onRetry = viewModel::refresh) {
                     AlbumsScreen(
-                    items = items,
+                    items = visibleItems,
                     onOpenAlbum = { activeAlbum = it },
                     onRecentlyDeleted = { showRecentlyDeleted = true },
-                    deletedCount = trashedItems.size,
+                    deletedCount = visibleTrashedItems.size,
                     onMore = { moreOpen = true },
                     )
                 }
@@ -315,21 +328,21 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                 }
                 Destination.PEOPLE -> ScreenErrorBoundary(screenName = "People", errorMessage = recognitionProgress.error ?: error, onRetry = viewModel::refresh) {
                     PeopleScreen(
-                    items = items,
+                    items = visibleItems,
                     faces = detectedFaces,
                     clusters = personClusters,
                     progress = recognitionProgress,
-                    onAnalyze = { viewModel.analyzeLibrary(items) },
+                    onAnalyze = { viewModel.analyzeLibrary(visibleItems) },
                     )
                 }
                 Destination.AI_SETS -> ScreenErrorBoundary(screenName = "AI Sets", onRetry = viewModel::refresh) {
                     AiSetsScreen(
-                    items = items,
+                    items = visibleItems,
                     clusters = sceneClusters,
                     savedAiSets = savedAiSets,
                     progress = recognitionProgress,
                     error = error,
-                    onAnalyze = { viewModel.analyzeLibrary(items) },
+                    onAnalyze = { viewModel.analyzeLibrary(visibleItems) },
                     onSaveAiSet = viewModel::saveAiSet,
                     onRenameAiSet = viewModel::renameAiSet,
                     onMergeAiSets = viewModel::mergeAiSets,
@@ -339,10 +352,10 @@ fun GalleryRoute(viewModel: GalleryViewModel) {
                     )
                 }
                 Destination.OPTIMIZE -> ScreenErrorBoundary(screenName = "Optimize", errorMessage = error, onRetry = viewModel::refresh) {
-                    OptimizeScreen(items)
+                    OptimizeScreen(visibleItems)
                 }
                 Destination.SETTINGS -> ScreenErrorBoundary(screenName = "Settings", errorMessage = error, onRetry = viewModel::refresh) {
-                    SettingsScreen(context, items)
+                    SettingsScreen(context, visibleItems)
                 }
             }
         }
