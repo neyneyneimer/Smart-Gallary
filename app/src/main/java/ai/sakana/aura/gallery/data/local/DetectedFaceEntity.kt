@@ -7,7 +7,11 @@ import androidx.room.PrimaryKey
 /** Face location only; this row does not claim to identify a person. */
 @Entity(
     tableName = "detected_faces",
-    indices = [Index(value = ["contentUri"]), Index(value = ["contentUri", "frameTimeMillis"])],
+    indices = [
+        Index(value = ["contentUri"]),
+        Index(value = ["contentUri", "frameTimeMillis"]),
+        Index(value = ["personClusterId"], name = "index_detected_faces_personClusterId"),
+    ],
 )
 data class DetectedFaceEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -20,4 +24,5 @@ data class DetectedFaceEntity(
     val bottomNormalized: Float,
     val yawDegrees: Float,
     val rollDegrees: Float,
+    val personClusterId: Long? = null,
 )
