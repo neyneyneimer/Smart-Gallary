@@ -72,13 +72,14 @@
 - [x] Build a Compose gallery grid with Coil 3 and a configured `SingletonImageLoader`.
 - [x] Add Photo Picker import using `PickMultipleVisualMedia` as the no-permission path.
 - [x] Add full-library permission handling for API 33 and API 34+, including `READ_MEDIA_VISUAL_USER_SELECTED` and partial-access UI.
-- [ ] Handle permission denial, revoked access, empty libraries and inaccessible URIs without crashing.
+- [x] Handle permission denial, revoked access and empty libraries without crashing; cached rows are hidden after all media grants are revoked. Invalid/revoked URI coverage remains pending.
 - [x] Add favourite toggle and persist its state in Room.
 - [x] Add loading, empty, permission-required, partial-access and recoverable-error UI states.
 - [x] Apply the supplied five-screen UI design system: graphite/safelight palette, bundled licensed typefaces, square contact-sheet grid, hairline controls, localized metadata and the Library / People / Edit / Optimize / Settings destinations.
 - [ ] Add focused tests for media mapping, repository refresh behavior and favourite persistence. Six permission-policy unit tests currently pass.
-- [ ] Verify on API 33, 34 and 36, including partial photo selection.
-- [ ] Run a 1,000+ item scrolling/memory test on a real device or representative emulator.
+- [x] Exercise Android 15 / API 35 on a Pixel 9 emulator: limited photo selection, full photo/video grants, denial, repeated denial to app settings, full revocation and re-grant.
+- [ ] Verify on API 33, 34 and 36, including API 34 multi-select/revoke and API 36 background revocation.
+- [x] Run a 1,001-item scrolling/memory benchmark on the API 35 emulator; measured results are recorded below, and scroll/cold-start targets did not pass.
 
 **M1 exit criteria:**
 - Real device photos display; no placeholder/drawable-backed gallery records.
@@ -159,7 +160,25 @@
 
 - Room 2.8.5 KSP release processing hits a Kotlin compiler classloader serializer AbstractMethodError with the pinned Kotlin 2.0.21 toolchain. Room processing now uses KAPT, while Hilt remains on KSP. KAPT reports a Kotlin language 1.9 fallback for stubs; keep this visible and revisit on the next toolchain upgrade. Room schema export through KAPT has been verified.
 - Coil 3.3.0 requires Kotlin 2.2 metadata and failed against Kotlin 2.0.21. Coil 3.0.4 is pinned to retain the v2.1 Kotlin baseline.
-- The available sandbox host runs JDK 21, not the JDK 17 CI target. No Android emulator or attached device is available in this build environment. The app builds locally, but M0/M1 runtime acceptance is not complete until GitHub Actions runs under JDK 17 and API 33/34/36 device tests are performed.
+- The local build sandbox runs JDK 21; GitHub Actions remains the JDK 17 CI gate. A Pixel 9 Android 15 / API 35 emulator is now available through ParallelSandbox. The Android host exposed only API 35, so API 33/34/36 runtime acceptance remains open.
+
+## M1 — Performance Benchmarks
+
+The app logs local Timber events prefixed with `PERF metric=`. These are measurement points, not evidence that a target has passed.
+
+| Measure | Acceptance target | Instrumentation | Verified result |
+|---|---:|---|---|
+| Cold start to first visible gallery content | under 2 seconds | Process start to first non-empty Library composition | 2,025 ms — **missed** by 25 ms |
+| MediaStore load for 1,001 images | under 5 seconds | `incremental_media_store_refresh`, item-count delta 0→1,001 | 1,063 ms — **within target**; first query was 703 ms but returned 0 rows |
+| Incremental refresh (10 new items) | under 500 ms | `incremental_media_store_refresh` duration and item-count delta | Not isolated; 1,001-item load measured instead |
+| Scroll frame timing | at least 95% of sampled frames within 16 ms | Choreographer intervals during eight Library grid swipe batches | 0.0% within 16 ms across 92 sampled frame callbacks — **failed** |
+| Heap at rest | under 128 MB | Runtime heap after first gallery content and scan | 14.1 MB used heap — **within target** |
+| Peak heap during scroll | under 256 MB | Runtime heap samples while Library grid scrolls | 9.56 MB peak used heap — **within target** |
+
+Collect measurements with `adb logcat | grep "PERF metric="`. API 33/34/36 runtime permission acceptance and the 1,000+ item benchmark still require physical devices or representative emulators; no measurements are inferred from CI.
+
+- 2026-11-20: Account 1 hardening follow-up — repository Room operations now report SQLiteException to a shared safe UI error state; media observation errors no longer crash the collector; repeated permission denial routes to Android app settings; fatal crashes persist a minimal marker and show a generic recovery dialog on next launch.
+- 2026-11-20: Android 15/API35 Pixel 9 emulator smoke test found and fixed duplicate virtual-album LazyGrid keys and stale cached media rendered after all permissions were revoked. Partial access, full access, denial/settings routing, revocation and re-grant passed. Added regression tests. 1,001-photo benchmark: 2,025 ms cold start, 1,063 ms refresh to load 1,001 rows, 14.1 MB used heap after scan, 9.56 MB peak used heap during scroll; scroll frame metric 0.0% within 16 ms and cold start missed target. API 33/34/36 remain pending.
 
 ## Change log
 

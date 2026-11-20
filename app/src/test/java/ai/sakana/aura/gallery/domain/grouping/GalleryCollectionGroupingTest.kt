@@ -62,6 +62,15 @@ class GalleryCollectionGroupingTest {
     }
 
     @Test
+    fun `virtual albums have unique stable keys when they share a source folder`() {
+        val camera = item(1, "DCIM/Camera")
+        val albums = GalleryCollectionGrouping.buildAlbums(listOf(camera))
+
+        assertEquals(listOf("Recent", "Camera", "Videos", "Screenshots"), albums.map { it.title })
+        assertEquals(albums.size, albums.map { it.stableKey }.distinct().size)
+    }
+
+    @Test
     fun `video mime type is recognized even when media type defaults to image`() {
         val item = MediaItem(
             id = 8,
